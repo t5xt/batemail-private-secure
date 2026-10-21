@@ -54,10 +54,28 @@ $('#f-login').addEventListener('submit', async function (e) {
   } catch (x) { er.textContent = x.message; }
 });
 
+
 async function loadMail() {
   var j = await api('mail');
   me = j.email;
-  mailbox = j.mail.slice().sort(function (a, b) { return b.ts - a.ts; });
+
+  mailbox = (Array.isArray(j.mail) ? j.mail : []).map(function (m) {
+    return {
+      id: m.id,
+      from: m.sender || '',
+      to: m.recipient || me,
+      subject: m.subject || '',
+      body: m.body || '',
+      ts: m.received_at || '',
+      read: Boolean(m.is_read),
+      folder: 'inbox'
+    };
+  }).sort(function (a, b) {
+    return new Date(String(b.ts).replace(' ', 'T') + 'Z') -
+           new Date(String(a.ts).replace(' ', 'T') + 'Z');
+  });
+
+  console.log('BateMail DEBUG: emails loaded:', mailbox.length);
 }
 async function start() {
   await loadMail();
