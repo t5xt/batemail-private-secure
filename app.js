@@ -206,16 +206,21 @@ $('#n-forum').onclick = function () {
   go('forum');
 };
 
-/* ---------- refresh mail button ---------- */
+/* ---------- icon-only refresh button ---------- */
 
 var refreshButton = $('#refresh-mail');
 
 if (refreshButton) {
+  refreshButton.textContent = '↻';
+  refreshButton.setAttribute('aria-label', 'Refresh mail');
+  refreshButton.setAttribute('title', 'Refresh mail');
+
   refreshButton.onclick = async function () {
     if (refreshButton.disabled) return;
 
     refreshButton.disabled = true;
-    refreshButton.textContent = 'Refreshing...';
+    refreshButton.textContent = '↻';
+    refreshButton.setAttribute('aria-label', 'Refreshing mail');
 
     try {
       await loadMail();
@@ -225,14 +230,21 @@ if (refreshButton) {
 
       render();
 
-      refreshButton.textContent = '✓ Refreshed';
+      refreshButton.textContent = '✓';
+      refreshButton.setAttribute('aria-label', 'Mail refreshed');
+      refreshButton.setAttribute('title', 'Mail refreshed');
     } catch (e) {
       console.error('BateMail refresh failed:', e);
-      refreshButton.textContent = 'Refresh failed';
+
+      refreshButton.textContent = '!';
+      refreshButton.setAttribute('aria-label', 'Refresh failed');
+      refreshButton.setAttribute('title', 'Refresh failed. Try again.');
     } finally {
       setTimeout(function () {
         refreshButton.disabled = false;
-        refreshButton.textContent = '↻ Refresh Mail';
+        refreshButton.textContent = '↻';
+        refreshButton.setAttribute('aria-label', 'Refresh mail');
+        refreshButton.setAttribute('title', 'Refresh mail');
       }, 1500);
     }
   };
