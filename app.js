@@ -12,13 +12,17 @@ function el(t, c, x) {
 }
 
 function fmt(t) {
-  var d = new Date(String(t || '').replace(' ', 'T') + (typeof t === 'string' && t.indexOf('Z') === -1 && !/[+-]\d\d:\d\d$/.test(t) ? 'Z' : ''));
-  return isNaN(d.getTime()) ? String(t || '') : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(t).toLocaleString([], {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
 }
 
 var token = null, me = null, mailbox = [], view = 'inbox', openId = null;
 
-try { token = localStorage.getItem('bm_token'); } catch (e) {}
+try {
+  token = localStorage.getItem('bm_token');
+} catch (e) {}
 
 function setToken(t) {
   token = t;
@@ -29,8 +33,15 @@ function setToken(t) {
 }
 
 async function api(path, body, anon) {
-  var o = { method: body === undefined ? 'GET' : 'POST', headers: {} };
-  if (token && !anon) o.headers.Authorization = 'Bearer ' + token;
+  var o = {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {}
+  };
+
+  if (token && !anon) {
+    o.headers.Authorization = 'Bearer ' + token;
+  }
+
   if (body !== undefined) {
     o.headers['Content-Type'] = 'application/json';
     o.body = JSON.stringify(body);
@@ -38,17 +49,22 @@ async function api(path, body, anon) {
 
   var r = await fetch('https://api.batemail.lol/api/' + path, o);
   var j = {};
-  try { j = await r.json(); } catch (e) {}
+
+  try {
+    j = await r.json();
+  } catch (e) {}
 
   if (!r.ok) {
-    var err = new Error(j.error || 'Request failed (' + r.status + ').');
+    var err = new Error(j.error || 'Something went wrong.');
     err.status = r.status;
     throw err;
   }
+
   return j;
 }
 
 /* ---------- auth ---------- */
+
 function tab(w) {
   ['create', 'login'].forEach(function (n) {
     $('#f-' + n).hidden = n !== w;
@@ -56,11 +72,17 @@ function tab(w) {
   });
 }
 
-$('#t-create').onclick = function () { tab('create'); };
-$('#t-login').onclick = function () { tab('login'); };
+$('#t-create').onclick = function () {
+  tab('create');
+};
+
+$('#t-login').onclick = function () {
+  tab('login');
+};
 
 $('#f-create').addEventListener('submit', async function (e) {
   e.preventDefault();
+
   var er = $('#c-err');
   er.textContent = '';
 
@@ -71,6 +93,7 @@ $('#f-create').addEventListener('submit', async function (e) {
     er.textContent = 'Username: 3–30 letters, numbers, . - or _';
     return;
   }
+
   if (p.length < 6) {
     er.textContent = 'Password must be at least 6 characters.';
     return;
@@ -88,6 +111,7 @@ $('#f-create').addEventListener('submit', async function (e) {
 
 $('#f-login').addEventListener('submit', async function (e) {
   e.preventDefault();
+
   var er = $('#l-err');
   er.textContent = '';
 
@@ -96,6 +120,7 @@ $('#f-login').addEventListener('submit', async function (e) {
       email: $('#l-mail').value.trim(),
       pass: $('#l-pass').value
     });
+
     setToken(j.token);
     $('#l-pass').value = '';
     await start();
@@ -104,15 +129,13 @@ $('#f-login').addEventListener('submit', async function (e) {
   }
 });
 
-/* ---------- mail ---------- */
+/* ---------- mailbox ---------- */
+
 async function loadMail() {
-  console.log('BateMail DEBUG: loading mail...');
   var j = await api('mail');
   me = j.email || '';
 
-  var emails = Array.isArray(j.mail) ? j.mail : [];
-
-  mailbox = emails.map(function (m) {
+  mailbox = (Array.isArray(j.mail) ? j.mail : []).map(function (m) {
     var stamp = m.received_at || m.ts || m.created_at || '';
 
     return {
@@ -122,7 +145,9 @@ async function loadMail() {
       subject: m.subject || '',
       body: m.body || '',
       ts: stamp,
-      read: Boolean(m.is_read !== undefined ? m.is_read : m.read),
+      read: Boolean(
+        m.is_read !== undefined ? m.is_read : m.read
+      ),
       folder: m.folder || 'inbox'
     };
   }).sort(function (a, b) {
@@ -135,11 +160,14 @@ async function loadMail() {
 
 async function start() {
   await loadMail();
+
   view = 'inbox';
   openId = null;
+
   $('#auth').hidden = true;
   $('#app').hidden = false;
   $('#me').textContent = me;
+
   render();
 }
 
@@ -147,25 +175,70 @@ function logoutUI() {
   setToken(null);
   me = null;
   mailbox = [];
+
   $('#app').hidden = true;
   $('#auth').hidden = false;
+
   tab('login');
 }
 
 $('#out').onclick = async function () {
-  try { await api('logout', {}); } catch (e) {}
+  try {
+    await api('logout', {});
+  } catch (e) {}
+
   logoutUI();
 };
 
 /* ---------- navigation ---------- */
+
 function go(v) {
   view = v;
   openId = null;
   render();
 }
 
-$('#n-inbox').onclick = function () { go('inbox'); };
-$('#n-forum').onclick = function () { go('forum'); };
+$('#n-inbox').onclick = function () {
+  go('inbox');
+};
+
+$('#n-forum').onclick = function () {
+  go('forum');
+};
+
+/* ---------- refresh mail button ---------- */
+
+var refreshButton = $('#refresh-mail');
+
+if (refreshButton) {
+  refreshButton.onclick = async function () {
+    if (refreshButton.disabled) return;
+
+    refreshButton.disabled = true;
+    refreshButton.textContent = 'Refreshing...';
+
+    try {
+      await loadMail();
+
+      openId = null;
+      view = 'inbox';
+
+      render();
+
+      refreshButton.textContent = '✓ Refreshed';
+    } catch (e) {
+      console.error('BateMail refresh failed:', e);
+      refreshButton.textContent = 'Refresh failed';
+    } finally {
+      setTimeout(function () {
+        refreshButton.disabled = false;
+        refreshButton.textContent = '↻ Refresh Mail';
+      }, 1500);
+    }
+  };
+}
+
+/* ---------- render inbox and navigation ---------- */
 
 function render() {
   var unread = mailbox.filter(function (m) {
@@ -184,11 +257,11 @@ function render() {
   if (view === 'forum') return renderForum(pane);
 
   if (openId) {
-    var opened = mailbox.filter(function (x) {
-      return String(x.id) === String(openId);
+    var m = mailbox.filter(function (x) {
+      return x.id === openId;
     })[0];
 
-    if (opened) return renderRead(pane, opened);
+    if (m) return renderRead(pane, m);
   }
 
   var list = mailbox.filter(function (m) {
@@ -202,6 +275,7 @@ function render() {
 
   list.forEach(function (m) {
     var r = el('button', 'row' + (!m.read ? ' unread' : ''));
+
     r.appendChild(el('b', '', m.subject || '(no subject)'));
     r.appendChild(el('small', '', m.from + ' · ' + fmt(m.ts)));
 
@@ -210,10 +284,9 @@ function render() {
 
       if (!m.read) {
         m.read = true;
-        api('read', { id: m.id }).catch(function (x) {
-          console.error('Could not mark email as read:', x);
-        });
+        api('read', { id: m.id }).catch(function () {});
       }
+
       render();
     };
 
@@ -223,15 +296,23 @@ function render() {
 
 function renderRead(pane, m) {
   var d = el('div', 'read');
+
   d.appendChild(el('h2', '', m.subject || '(no subject)'));
-  d.appendChild(el('p', 'meta',
+
+  d.appendChild(el(
+    'p',
+    'meta',
     'From ' + m.from + ' · To ' + m.to + ' · ' + fmt(m.ts)
   ));
+
   d.appendChild(el('p', 'body', m.body));
 
   var a = el('div', 'actions');
   var b = el('button', 'ghost', 'Back');
-  b.onclick = function () { go('inbox'); };
+
+  b.onclick = function () {
+    go('inbox');
+  };
 
   a.appendChild(b);
   d.appendChild(a);
@@ -239,15 +320,14 @@ function renderRead(pane, m) {
 }
 
 /* ---------- anonymous forum ---------- */
+
 async function renderForum(box) {
   var list = [];
 
   try {
     var result = await api('forum', undefined, true);
     list = Array.isArray(result.posts) ? result.posts : [];
-  } catch (e) {
-    console.error('Could not load forum:', e);
-  }
+  } catch (e) {}
 
   if (box.id === 'pane' && view !== 'forum') return;
 
@@ -270,6 +350,7 @@ async function renderForum(box) {
 
   btn.type = 'submit';
   er.setAttribute('role', 'alert');
+
   f.append(t, b, er, btn);
 
   f.addEventListener('submit', async function (e) {
@@ -286,7 +367,8 @@ async function renderForum(box) {
         title: t.value.trim(),
         body: b.value.trim()
       }, true);
-      await renderForum(box);
+
+      renderForum(box);
     } catch (x) {
       er.textContent = x.message;
     }
@@ -295,14 +377,23 @@ async function renderForum(box) {
   wrap.appendChild(f);
 
   if (!list.length) {
-    wrap.appendChild(el('div', 'empty', 'No posts yet. Start the conversation.'));
+    wrap.appendChild(el(
+      'div',
+      'empty',
+      'No posts yet. Start the conversation.'
+    ));
   }
 
   list.forEach(function (p) {
     var d = el('article', 'fitem');
-    if (p.title) d.appendChild(el('h3', '', p.title));
+
+    if (p.title) {
+      d.appendChild(el('h3', '', p.title));
+    }
+
     d.appendChild(el('p', 'fbody', p.body));
-    d.appendChild(el('small', '', (p.name || 'Anonymous') + ' · ' + fmt(p.ts)));
+    d.appendChild(el('small', '', p.name + ' · ' + fmt(p.ts)));
+
     wrap.appendChild(d);
   });
 
@@ -310,13 +401,13 @@ async function renderForum(box) {
 }
 
 /* ---------- start ---------- */
+
 renderForum($('#forum-landing'));
 
 if (token) {
-  start().catch(function (x) {
-    console.error('BateMail startup failed:', x);
+  start().catch(function () {
     logoutUI();
-    tab('login');
+    tab('create');
   });
 }
 
