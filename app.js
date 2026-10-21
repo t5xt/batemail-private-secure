@@ -15,7 +15,7 @@ async function api(path, body, anon) {
   var o = { method: body === undefined ? 'GET' : 'POST', headers: {} };
   if (token && !anon) o.headers.Authorization = 'Bearer ' + token;
   if (body !== undefined) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
-  var r = await fetch('/api/' + path, o), j = {};
+  var r = await fetch('https://batemail-api.anemic6767.workers.dev/api/' + path, o), j = {};
   try { j = await r.json(); } catch (e) {}
   if (!r.ok) { var err = new Error(j.error || 'Something went wrong.'); err.status = r.status; throw err; }
   return j;
