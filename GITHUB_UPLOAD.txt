@@ -1,0 +1,1 @@
+Upload this folder's contents to GitHub. Do not commit .env, data/, or encryption keys. See README.md.
