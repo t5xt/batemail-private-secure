@@ -151,11 +151,24 @@ async function loadMail() {
       folder: m.folder || 'inbox'
     };
   }).sort(function (a, b) {
-    return new Date(String(b.ts).replace(' ', 'T') + 'Z') -
-           new Date(String(a.ts).replace(' ', 'T') + 'Z');
+    function parseDate(value) {
+      var s = String(value || '').trim();
+
+      if (!s) return 0;
+
+      // Respect timestamps that already include a timezone.
+      if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+        s = s.replace(' ', 'T') + 'Z';
+      }
+
+      var n = Date.parse(s);
+      return Number.isNaN(n) ? 0 : n;
+    }
+
+    return parseDate(b.ts) - parseDate(a.ts);
   });
 
-  console.log('BateMail DEBUG: emails loaded:', mailbox.length);
+  console.log('BateMail: emails loaded:', mailbox.length);
 }
 
 async function start() {
@@ -206,21 +219,18 @@ $('#n-forum').onclick = function () {
   go('forum');
 };
 
-/* ---------- icon-only refresh button ---------- */
+/* ---------- animated refresh button ---------- */
 
 var refreshButton = $('#refresh-mail');
 
 if (refreshButton) {
-  refreshButton.textContent = '↻';
-  refreshButton.setAttribute('aria-label', 'Refresh mail');
-  refreshButton.setAttribute('title', 'Refresh mail');
-
-  refreshButton.onclick = async function () {
+  refreshButton.addEventListener('click', async function () {
     if (refreshButton.disabled) return;
 
     refreshButton.disabled = true;
-    refreshButton.textContent = '↻';
+    refreshButton.classList.add('is-refreshing');
     refreshButton.setAttribute('aria-label', 'Refreshing mail');
+    refreshButton.setAttribute('title', 'Refreshing mail');
 
     try {
       await loadMail();
@@ -229,25 +239,19 @@ if (refreshButton) {
       view = 'inbox';
 
       render();
-
-      refreshButton.textContent = '✓';
-      refreshButton.setAttribute('aria-label', 'Mail refreshed');
-      refreshButton.setAttribute('title', 'Mail refreshed');
     } catch (e) {
       console.error('BateMail refresh failed:', e);
-
-      refreshButton.textContent = '!';
-      refreshButton.setAttribute('aria-label', 'Refresh failed');
-      refreshButton.setAttribute('title', 'Refresh failed. Try again.');
     } finally {
+      // Let the dots remain visible briefly so the animation feels smooth.
       setTimeout(function () {
+        refreshButton.classList.remove('is-refreshing');
+
         refreshButton.disabled = false;
-        refreshButton.textContent = '↻';
         refreshButton.setAttribute('aria-label', 'Refresh mail');
         refreshButton.setAttribute('title', 'Refresh mail');
-      }, 1500);
+      }, 350);
     }
-  };
+  });
 }
 
 /* ---------- render inbox and navigation ---------- */
