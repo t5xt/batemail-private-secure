@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BateMail</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 50'%3E%3Cg fill='%23999'%3E%3Cpath id='h' d='M50 13L54 2L57 12Q75 4 99 12Q88 19 88 30Q80 26 72 35Q65 28 58 33L50 44Z'/%3E%3Cpath transform='matrix(-1 0 0 1 100 0)' d='M50 13L54 2L57 12Q75 4 99 12Q88 19 88 30Q80 26 72 35Q65 28 58 33L50 44Z'/%3E%3C/g%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#000;--panel:#111;--line:#2c2c2c;--text:#f2f2f2;--muted:#8d8d8d;--accent:#fff;--accent-ink:#000;
+--d:'Bricolage Grotesque',system-ui,sans-serif;--b:'IBM Plex Sans',system-ui,sans-serif;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#fff;--panel:#f3f3f3;--line:#d6d6d6;--text:#0c0c0c;--muted:#6b6b6b;--accent:#000;--accent-ink:#fff;color-scheme:light}}
+:root[data-theme="light"]{--bg:#fff;--panel:#f3f3f3;--line:#d6d6d6;--text:#0c0c0c;--muted:#6b6b6b;--accent:#000;--accent-ink:#fff;color-scheme:light}
+:root[data-theme="dark"]{--bg:#000;--panel:#111;--line:#2c2c2c;--text:#f2f2f2;--muted:#8d8d8d;--accent:#fff;--accent-ink:#000;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 var(--b);min-height:100vh}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.logo{font:800 22px var(--d);letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.ico{width:40px;height:20px;fill:currentColor;flex:none}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);font:inherit;padding:12px 14px}
+input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;font:800 15px var(--d);padding:12px 20px}
+.btn:hover{opacity:.88}
+.ghost{background:none;border:1px solid var(--line);border-radius:10px;padding:9px 14px}
+.ghost:hover{border-color:var(--accent)}
+.warn{color:var(--muted);font-size:14px;margin:0}
+.err{color:var(--text);font-size:14px;min-height:1.4em;margin:0}
+/* auth */
+#auth{max-width:560px;margin:0 auto;padding:28px 22px 40px}
+#auth h1{font:800 clamp(38px,9vw,56px)/1.02 var(--d);letter-spacing:-.03em;margin:18px 0 28px}
+.tabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:20px}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:10px 16px 10px 0;margin-right:16px;color:var(--muted);font:800 16px var(--d)}
+.tab[aria-selected=true]{color:var(--text);border-color:var(--accent)}
+form{display:grid;gap:12px}
+.addr{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;padding-right:12px}
+.addr:focus-within{border-color:var(--accent)}
+.addr input{border:0;text-align:right}
+.addr span{color:var(--muted);white-space:nowrap}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:44px}
+.links{display:flex;gap:4px;font-size:15px}
+.links a{color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:999px}
+.links a:hover{color:var(--text);background:var(--panel)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:40px}
+.stats div{background:var(--bg);padding:16px 18px}
+.stats b{display:block;font:800 19px var(--d);letter-spacing:-.01em}
+.stats span{color:var(--muted);font-size:14px}
+.info{margin-top:56px}
+.info section{border-top:1px solid var(--line);padding:28px 0}
+.info h2{font:800 24px var(--d);letter-spacing:-.02em;margin:0 0 10px}
+.info p{color:var(--muted);margin:0 0 10px}
+.info details{border-bottom:1px solid var(--line);padding:12px 0}
+.info summary{cursor:pointer;font:800 16px var(--d)}
+.info details p{margin:8px 0 0}
+.fpost{margin-bottom:20px}
+.fitem{border-top:1px solid var(--line);padding:16px 0}
+.fitem h3{font:800 17px var(--d);margin:0 0 4px}
+.info .fbody,.fbody{white-space:pre-wrap;margin:0 0 6px;color:var(--text)}
+.fitem small{color:var(--muted)}
+.pane .fpost{margin:0;padding:20px}
+.pane .fitem{padding:16px 20px}
+/* app */
+#app{max-width:1040px;margin:0 auto;padding:0 22px 40px}
+.top{display:flex;justify-content:space-between;align-items:center;padding:18px 0;gap:12px;flex-wrap:wrap}
+.me{color:var(--muted);font-size:15px;display:flex;align-items:center;gap:12px}
+.grid{display:grid;grid-template-columns:190px 1fr;gap:24px}
+.side{display:grid;gap:6px;align-content:start}
+.side button{background:none;border:1px solid transparent;text-align:left;padding:10px 14px;border-radius:10px;display:flex;justify-content:space-between}
+.side button[aria-current=true]{background:var(--panel);border-color:var(--line)}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:14px;min-height:360px;overflow:hidden}
+.row{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:14px 18px}
+.row:hover{background:var(--bg)}
+.row b{display:block;font-weight:500}
+.row.unread b{font-weight:800}
+.row small{color:var(--muted)}
+.empty{padding:40px 18px;color:var(--muted)}
+.read{padding:22px}
+.read h2{font:800 26px/1.15 var(--d);margin:0 0 6px}
+.meta{color:var(--muted);font-size:14px;margin:0 0 18px}
+.body{white-space:pre-wrap;margin:0 0 22px}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@media (max-width:720px){.grid{grid-template-columns:1fr}.side{grid-template-columns:repeat(auto-fit,minmax(78px,1fr))}</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="bat" viewBox="0 0 100 50"><path d="M50 13L54 2L57 12Q75 4 99 12Q88 19 88 30Q80 26 72 35Q65 28 58 33L50 44Z"/><path transform="matrix(-1 0 0 1 100 0)" d="M50 13L54 2L57 12Q75 4 99 12Q88 19 88 30Q80 26 72 35Q65 28 58 33L50 44Z"/></symbol></defs></svg>
+<main id="auth">
+ <div class="bar"><div class="logo"><svg class="ico" aria-hidden="true"><use href="#bat"/></svg>BateMail</div>
+ <nav class="links" aria-label="Sections"><a href="#faq">FAQ</a><a href="#forum">Forum</a></nav></div>
+ <h1>Free email.<br>No questions.</h1>
+ <div class="tabs" role="tablist">
+  <button class="tab" role="tab" id="t-create" aria-selected="true">Create account</button>
+  <button class="tab" role="tab" id="t-login" aria-selected="false">Log in</button>
+ </div>
+ <form id="f-create">
+  <div class="addr"><input id="c-user" placeholder="username" aria-label="Username" autocomplete="off" maxlength="30" spellcheck="false"><span>@batemail.lol</span></div>
+  <input id="c-pass" type="password" placeholder="Password" aria-label="Password" autocomplete="new-password">
+  <p class="err" id="c-err" role="alert"></p>
+  <button class="btn" type="submit">Create email</button>
+ </form>
+ <form id="f-login" hidden>
+  <input id="l-mail" placeholder="you@batemail.lol" aria-label="Email address" autocomplete="username" spellcheck="false">
+  <input id="l-pass" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password">
+  <p class="err" id="l-err" role="alert"></p>
+  <button class="btn" type="submit">Log in</button>
+ </form>
+ <p class="warn" style="margin-top:22px">Don’t share your email, password or personal info on batemail.lol.</p>
+ <div class="stats">
+  <div><b>Free</b><span>No paid plans and no ads.</span></div>
+  <div><b>Receive only</b><span>Get mail from anyone. Nothing can be sent.</span></div>
+  <div><b>Hashed passwords</b><span>Your password is never stored as plain text.</span></div>
+  <div><b>Encrypted storage</b><span>Everything is kept in an encrypted file on the server.</span></div>
+ </div>
+ <div class="info">
+  <section id="faq"><h2>FAQ</h2>
+   <details><summary>Is it free?</summary><p>Yes. There are no paid plans or ads.</p></details>
+   <details><summary>How do I log in?</summary><p>Type your email address and password. Keep both private, since anyone who has them can open your mailbox.</p></details>
+   <details><summary>Where is my mail stored?</summary><p>On the BateMail server, in an encrypted file only the owner can open. Mail is never deleted, and you can log in from any device.</p></details>
+   <details><summary>Can I send email?</summary><p>No. BateMail is receive-only. Anyone can email your address, including Gmail and Outlook users, but you can’t send mail from it.</p></details>
+   <details><summary>Can I recover a lost account?</summary><p>No. If you forget your address or password, the mailbox can’t be recovered.</p></details>
+  </section>
+  <section id="forum"><h2>Forum</h2>
+   <p>Every post is anonymous. Don’t include personal info.</p>
+   <div id="forum-landing"></div></section>
+ </div>
+</main>
+
+<div id="app" hidden>
+ <div class="top">
+  <div class="logo"><svg class="ico" aria-hidden="true"><use href="#bat"/></svg>BateMail</div>
+  <div class="me"><span id="me"></span><button class="ghost" id="out">Log out</button></div>
+ </div>
+ <div class="grid">
+  <nav class="side" aria-label="Folders">
+   <button id="n-inbox">Inbox <span id="cnt"></span></button>
+   <button id="n-forum">Forum</button>
+  </nav>
+  <section class="pane" id="pane" aria-live="polite"></section>
+ </div>
+ <p class="warn" style="margin-top:18px">Don’t share your email, password or personal info on batemail.lol.</p>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
