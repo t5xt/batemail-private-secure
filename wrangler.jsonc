@@ -1,0 +1,19 @@
+
+{
+  "$schema": "https://json.schemastore.org/wrangler",
+  "name": "batemail-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-21",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "batemail-db",
+      "database_id": "facfcd1e-3aa1-423f-a9e4-e47db7b7bfee"
+    }
+  ]
+}
