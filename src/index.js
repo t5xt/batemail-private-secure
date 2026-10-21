@@ -1,4 +1,4 @@
-
+import PostalMime from "postal-mime";
 const EMAIL_DOMAIN = "batemail.lol";
 const SESSION_DAYS = 7;
 const ALLOWED_ORIGINS = new Set([
