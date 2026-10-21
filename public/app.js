@@ -90,7 +90,16 @@ $('#f-login').addEventListener('submit', async function (e) {
 });
 
 async function loadMail() {
+  console.log('BateMail DEBUG: loading mail...');
   var j = await api('mail');
+
+  console.log('BateMail DEBUG: API response', {
+    account: j.email,
+    mailIsArray: Array.isArray(j.mail),
+    mailCount: Array.isArray(j.mail) ? j.mail.length : 'not an array',
+    subjects: Array.isArray(j.mail) ? j.mail.map(function (m) { return m.subject; }) : []
+  });
+
   me = j.email;
   mailbox = (Array.isArray(j.mail) ? j.mail : []).map(function (m) {
     return {
@@ -107,10 +116,23 @@ async function loadMail() {
     return new Date(b.ts.replace(' ', 'T') + 'Z') -
            new Date(a.ts.replace(' ', 'T') + 'Z');
   });
+
+  console.log('BateMail DEBUG: mailbox after mapping', {
+    account: me,
+    emailCount: mailbox.length,
+    subjects: mailbox.map(function (m) { return m.subject; })
+  });
 }
 
 async function start() {
   await loadMail();
+
+  console.log('BateMail DEBUG: starting inbox', {
+    account: me,
+    emailCount: mailbox.length,
+    view: view
+  });
+
   view = 'inbox';
   openId = null;
   $('#auth').hidden = true;
@@ -143,6 +165,12 @@ $('#n-inbox').onclick = function () { go('inbox'); };
 $('#n-forum').onclick = function () { go('forum'); };
 
 function render() {
+  console.log('BateMail DEBUG: rendering', {
+    view: view,
+    emailCount: mailbox.length,
+    folders: mailbox.map(function (m) { return m.folder; })
+  });
+
   var unread = mailbox.filter(function (m) {
     return m.folder === 'inbox' && !m.read;
   }).length;
@@ -163,6 +191,8 @@ function render() {
   }
 
   var list = mailbox.filter(function (m) { return m.folder === 'inbox'; });
+  console.log('BateMail DEBUG: inbox list count', list.length);
+
   if (!list.length) {
     pane.appendChild(el('div', 'empty', 'No messages yet.'));
     return;
@@ -259,7 +289,8 @@ async function renderForum(box) {
 
 /* ---------- start ---------- */
 renderForum($('#forum-landing'));
-if (token) start().catch(function () {
+if (token) start().catch(function (e) {
+  console.error('BateMail DEBUG: start failed', e);
   logoutUI();
   tab('login');
 });
