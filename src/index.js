@@ -323,6 +323,48 @@ export default {
       }
     }
 
+   
     return env.ASSETS.fetch(request);
+  },
+
+  async email(message, env) {
+    const recipient = String(message.to || "").trim().toLowerCase();
+    const match = recipient.match(
+      /^([a-z0-9._-]{3,30})@batemail\.lol$/
+    );
+
+    if (!match) {
+      message.setReject("Invalid BateMail address");
+      return;
+    }
+
+    const username = match[1];
+
+    const user = await env.DB.prepare(
+      "SELECT username FROM users WHERE username = ?"
+    ).bind(username).first();
+
+    if (!user) {
+      message.setReject("Unknown BateMail recipient");
+      return;
+    }
+
+    if (message.rawSize > 10 * 1024 * 1024) {
+      message.setReject("Email exceeds BateMail's size limit");
+      return;
+    }
+
+    const parsed = await PostalMime.parse(message.raw);
+
+    const sender = String(
+      parsed.from?.address || message.from || ""
+    ).slice(0, 320);
+
+    const subject = String(parsed.subject || "").slice(0, 998);
+    const body = String(parsed.text || "").slice(0, 100000);
+
+    await env.DB.prepare(
+      "INSERT INTO emails (recipient, sender, subject, body) VALUES (?, ?, ?, ?)"
+    ).bind(recipient, sender, subject, body).run();
   }
 };
