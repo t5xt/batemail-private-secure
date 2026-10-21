@@ -328,6 +328,7 @@ export default {
   },
 
   async email(message, env) {
+    console.log("BateMail received email:", message.to);
     const recipient = String(message.to || "").trim().toLowerCase();
     const match = recipient.match(
       /^([a-z0-9._-]{3,30})@batemail\.lol$/
