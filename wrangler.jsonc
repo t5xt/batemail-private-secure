@@ -15,5 +15,21 @@
       "database_name": "batemail-db",
       "database_id": "facfcd1e-3aa1-423f-a9e4-e47db7b7bfee"
     }
-  ]
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": {
+      "enabled": false,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
+    "issue_detection": {
+      "enabled": false
+    }
+  }
 }
