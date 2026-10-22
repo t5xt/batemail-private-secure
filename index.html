@@ -491,6 +491,269 @@ form { display: grid; gap: 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+/* BateMail inbox layout */
+.mail-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.4fr);
+  min-height: 420px;
+}
+
+.message-list {
+  min-width: 0;
+  border-right: 1px solid var(--line);
+}
+
+.message-list-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.message-list-heading h1 {
+  margin: 0;
+  font: 700 25px var(--d);
+}
+
+.message-list-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  min-width: 0;
+  padding: 16px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.message-row:hover,
+.message-row.selected {
+  background: #102039;
+}
+
+.message-row.unread .message-sender,
+.message-row.unread .message-subject {
+  font-weight: 700;
+}
+
+.message-avatar,
+.sender-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 50%;
+  background: #18345a;
+  color: #b7d4ff;
+  font-weight: 700;
+}
+
+.message-row-content {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.message-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-sender,
+.message-time,
+.message-subject,
+.message-preview {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-sender {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.message-time {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.message-subject {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.message-preview {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.unread-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.message-reading {
+  min-width: 0;
+  padding: 24px;
+  overflow-wrap: anywhere;
+}
+
+.reading-header h2 {
+  margin: 0 0 18px;
+  font: 700 25px/1.25 var(--d);
+  overflow-wrap: anywhere;
+}
+
+.reading-sender-line {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sender-details {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sender-details strong,
+.sender-details span {
+  overflow-wrap: anywhere;
+}
+
+.sender-details span,
+.reading-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.email-body-card {
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #08111d;
+}
+
+.email-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.email-brand-icon {
+  color: #8fc3ff;
+}
+
+.email-body-text {
+  padding: 20px 16px;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.7;
+}
+
+.email-details {
+  display: grid;
+  gap: 5px;
+  margin-top: 17px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.reading-actions {
+  margin-top: 20px;
+}
+
+.reading-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  min-height: 400px;
+  padding: 25px;
+  text-align: center;
+}
+
+.reading-empty-icon {
+  font-size: 35px;
+  color: #8fc3ff;
+}
+
+.reading-empty h2 {
+  margin: 12px 0 5px;
+  font: 700 21px var(--d);
+}
+
+.reading-empty p {
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.refresh-error {
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid #713548;
+  border-radius: 9px;
+  color: #ffb6c2;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .mail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .message-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .message-reading {
+    padding: 19px 14px;
+  }
+
+  .reading-sender-line {
+    flex-wrap: wrap;
+  }
+
+  .reading-time {
+    margin-left: auto;
+  }
+}
+
 </style>
 </head>
 <body>
