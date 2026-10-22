@@ -16,6 +16,8 @@ function corsHeaders(request) {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
     "Vary": "Origin"
   };
 

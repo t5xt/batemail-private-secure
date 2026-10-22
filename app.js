@@ -137,7 +137,7 @@
     try {
       response = await fetch(
         'https://api.batemail.lol/api/' + path,
-        options
+        Object.assign({ cache: 'no-store' }, options)
       );
     } catch (error) {
       throw new Error(
@@ -423,6 +423,7 @@
         }
 
         render();
+        showRefreshStatus('Inbox updated · ' + mailbox.filter(function (m) { return m.folder === 'inbox'; }).length + ' messages');
       } catch (error) {
         console.error('BateMail refresh failed:', error);
         showRefreshError(error.message);
@@ -435,18 +436,16 @@
     });
   }
 
+  function showRefreshStatus(message) {
+    var notice = $('#refresh-status');
+    if (notice) {
+      notice.textContent = message;
+      notice.setAttribute('role', 'status');
+    }
+  }
+
   function showRefreshError(message) {
-    var pane = $('#pane');
-    if (!pane || view !== 'inbox') return;
-
-    var notice = el(
-      'p',
-      'refresh-error',
-      'Could not refresh mail. ' + (message || 'Please try again.')
-    );
-
-    notice.setAttribute('role', 'status');
-    pane.prepend(notice);
+    showRefreshStatus('Refresh failed: ' + (message || 'Please try again.'));
   }
 
   /* ---------- Main rendering ---------- */
@@ -528,15 +527,15 @@
       });
 
       if (!selected) {
-        selected = inboxMessages[0];
-        openId = selected.id;
+        openId = null;
       }
 
       inboxMessages.forEach(function (message) {
         listPanel.appendChild(renderMessageRow(message, selected));
       });
 
-      renderRead(readingPanel, selected);
+      if (selected) renderRead(readingPanel, selected);
+      else renderEmptyReadingPane(readingPanel);
     }
 
     layout.append(listPanel, readingPanel);
