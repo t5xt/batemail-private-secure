@@ -1,430 +1,302 @@
-
-(function () {
-'use strict';
-
-var $ = function (s) { return document.querySelector(s); };
-
-function el(t, c, x) {
-  var e = document.createElement(t);
-  if (c) e.className = c;
-  if (x !== undefined) e.textContent = x;
-  return e;
+```css
+/* Three-panel mail experience */
+.mail-layout {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.88fr) minmax(0, 1.35fr);
+  min-height: 540px;
 }
 
-function fmt(t) {
-  return new Date(t).toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  });
+.message-list {
+  min-width: 0;
+  border-right: 1px solid var(--line);
 }
 
-var token = null, me = null, mailbox = [], view = 'inbox', openId = null;
-
-try {
-  token = localStorage.getItem('bm_token');
-} catch (e) {}
-
-function setToken(t) {
-  token = t;
-  try {
-    if (t) localStorage.setItem('bm_token', t);
-    else localStorage.removeItem('bm_token');
-  } catch (e) {}
+.message-list-header {
+  padding: 18px 18px 15px;
+  border-bottom: 1px solid var(--line);
 }
 
-async function api(path, body, anon) {
-  var o = {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {}
-  };
+.message-list-heading h1 {
+  margin: 0;
+  font: 700 28px/1.15 var(--d);
+  letter-spacing: -.6px;
+}
 
-  if (token && !anon) {
-    o.headers.Authorization = 'Bearer ' + token;
+.message-list-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.message-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 16px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  transition: background .2s;
+}
+
+.message-row:hover { background: #0d1b2d; }
+.message-row.selected {
+  background: linear-gradient(110deg, #142743, #0d192a);
+  box-shadow: inset 2px 0 #2784ff;
+}
+
+.message-avatar, .sender-avatar {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  flex: 0 0 39px;
+  border-radius: 50%;
+  background: #1a3558;
+  color: #d8e8ff;
+  font-weight: 600;
+}
+
+.message-row-content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.message-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-sender {
+  overflow: hidden;
+  color: #e2edff;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-time {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.message-subject {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 26px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.reading-panel { min-width: 0; }
+
+.message-reading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px;
+}
+
+.reading-header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reading-header h2 {
+  margin: 0 0 19px;
+  font: 700 clamp(21px, 2vw, 27px)/1.2 var(--d);
+  letter-spacing: -.4px;
+  overflow-wrap: anywhere;
+}
+
+.reading-sender-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sender-avatar {
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+}
+
+.sender-details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sender-details strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.sender-details span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reading-time {
+  align-self: flex-start;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.email-body-card {
+  margin-top: 20px;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: linear-gradient(150deg, #091522, #060d16);
+}
+
+.email-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 26px;
+  font: 700 20px var(--d);
+}
+
+.email-brand-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #dceaff;
+  color: #10223c;
+}
+
+.email-body-text {
+  color: #dce8fa;
+  font-size: 14px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.email-details {
+  display: grid;
+  gap: 5px;
+  margin-top: 20px;
+  padding-top: 17px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.reading-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 20px;
+}
+
+.reading-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 30px;
+  text-align: center;
+}
+
+.reading-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border: 1px solid #294a75;
+  border-radius: 18px;
+  background: #10213a;
+  color: #a9cbff;
+  font-size: 27px;
+}
+
+.reading-empty h2 {
+  margin: 17px 0 5px;
+  font: 700 21px var(--d);
+}
+
+.reading-empty p {
+  max-width: 280px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.refresh-error {
+  margin: 0 0 10px;
+  padding: 10px 13px;
+  border: 1px solid #78404b;
+  border-radius: 9px;
+  background: #28131a;
+  color: #ffc2cb;
+  font-size: 13px;
+}
+
+@media (max-width: 1000px) {
+  .mail-layout {
+    grid-template-columns: minmax(245px, .8fr) minmax(0, 1.2fr);
   }
 
-  if (body !== undefined) {
-    o.headers['Content-Type'] = 'application/json';
-    o.body = JSON.stringify(body);
+  .message-reading { padding: 17px; }
+  .message-row { padding: 14px 10px; }
+}
+
+@media (max-width: 700px) {
+  .mail-layout { grid-template-columns: minmax(0, 1fr); }
+
+  .message-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
-  var r = await fetch('https://api.batemail.lol/api/' + path, o);
-  var j = {};
+  .message-list-header { padding: 15px; }
 
-  try {
-    j = await r.json();
-  } catch (e) {}
+  .message-list-heading h1 { font-size: 24px; }
 
-  if (!r.ok) {
-    var err = new Error(j.error || 'Something went wrong.');
-    err.status = r.status;
-    throw err;
-  }
+  .message-row { padding: 13px; }
 
-  return j;
+  .message-reading { padding: 19px 14px; }
+
+  .email-body-card { padding: 19px; }
+
+  .reading-header h2 { font-size: 23px; }
 }
-
-/* ---------- auth ---------- */
-
-function tab(w) {
-  ['create', 'login'].forEach(function (n) {
-    $('#f-' + n).hidden = n !== w;
-    $('#t-' + n).setAttribute('aria-selected', n === w);
-  });
-}
-
-$('#t-create').onclick = function () {
-  tab('create');
-};
-
-$('#t-login').onclick = function () {
-  tab('login');
-};
-
-$('#f-create').addEventListener('submit', async function (e) {
-  e.preventDefault();
-
-  var er = $('#c-err');
-  er.textContent = '';
-
-  var u = $('#c-user').value.trim().toLowerCase();
-  var p = $('#c-pass').value;
-
-  if (!/^[a-z0-9._-]{3,30}$/.test(u)) {
-    er.textContent = 'Username: 3–30 letters, numbers, . - or _';
-    return;
-  }
-
-  if (p.length < 6) {
-    er.textContent = 'Password must be at least 6 characters.';
-    return;
-  }
-
-  try {
-    var j = await api('register', { user: u, pass: p });
-    setToken(j.token);
-    $('#c-pass').value = '';
-    await start();
-  } catch (x) {
-    er.textContent = x.message;
-  }
-});
-
-$('#f-login').addEventListener('submit', async function (e) {
-  e.preventDefault();
-
-  var er = $('#l-err');
-  er.textContent = '';
-
-  try {
-    var j = await api('login', {
-      email: $('#l-mail').value.trim(),
-      pass: $('#l-pass').value
-    });
-
-    setToken(j.token);
-    $('#l-pass').value = '';
-    await start();
-  } catch (x) {
-    er.textContent = x.message;
-  }
-});
-
-/* ---------- mailbox ---------- */
-
-async function loadMail() {
-  var j = await api('mail');
-  me = j.email || '';
-
-  mailbox = (Array.isArray(j.mail) ? j.mail : []).map(function (m) {
-    var stamp = m.received_at || m.ts || m.created_at || '';
-
-    return {
-      id: m.id,
-      from: m.sender || m.from || '',
-      to: m.recipient || m.to || me,
-      subject: m.subject || '',
-      body: m.body || '',
-      ts: stamp,
-      read: Boolean(
-        m.is_read !== undefined ? m.is_read : m.read
-      ),
-      folder: m.folder || 'inbox'
-    };
-  }).sort(function (a, b) {
-    function parseDate(value) {
-      var s = String(value || '').trim();
-
-      if (!s) return 0;
-
-      // Respect timestamps that already include a timezone.
-      if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
-        s = s.replace(' ', 'T') + 'Z';
-      }
-
-      var n = Date.parse(s);
-      return Number.isNaN(n) ? 0 : n;
-    }
-
-    return parseDate(b.ts) - parseDate(a.ts);
-  });
-
-  console.log('BateMail: emails loaded:', mailbox.length);
-}
-
-async function start() {
-  await loadMail();
-
-  view = 'inbox';
-  openId = null;
-
-  $('#auth').hidden = true;
-  $('#app').hidden = false;
-  $('#me').textContent = me;
-
-  render();
-}
-
-function logoutUI() {
-  setToken(null);
-  me = null;
-  mailbox = [];
-
-  $('#app').hidden = true;
-  $('#auth').hidden = false;
-
-  tab('login');
-}
-
-$('#out').onclick = async function () {
-  try {
-    await api('logout', {});
-  } catch (e) {}
-
-  logoutUI();
-};
-
-/* ---------- navigation ---------- */
-
-function go(v) {
-  view = v;
-  openId = null;
-  render();
-}
-
-$('#n-inbox').onclick = function () {
-  go('inbox');
-};
-
-$('#n-forum').onclick = function () {
-  go('forum');
-};
-
-/* ---------- animated refresh button ---------- */
-
-var refreshButton = $('#refresh-mail');
-
-if (refreshButton) {
-  refreshButton.addEventListener('click', async function () {
-    if (refreshButton.disabled) return;
-
-    refreshButton.disabled = true;
-    refreshButton.classList.add('is-refreshing');
-    refreshButton.setAttribute('aria-label', 'Refreshing mail');
-    refreshButton.setAttribute('title', 'Refreshing mail');
-
-    try {
-      await loadMail();
-
-      openId = null;
-      view = 'inbox';
-
-      render();
-    } catch (e) {
-      console.error('BateMail refresh failed:', e);
-    } finally {
-      // Let the dots remain visible briefly so the animation feels smooth.
-      setTimeout(function () {
-        refreshButton.classList.remove('is-refreshing');
-
-        refreshButton.disabled = false;
-        refreshButton.setAttribute('aria-label', 'Refresh mail');
-        refreshButton.setAttribute('title', 'Refresh mail');
-      }, 350);
-    }
-  });
-}
-
-/* ---------- render inbox and navigation ---------- */
-
-function render() {
-  var unread = mailbox.filter(function (m) {
-    return m.folder === 'inbox' && !m.read;
-  }).length;
-
-  $('#cnt').textContent = unread ? unread : '';
-
-  [['inbox', '#n-inbox'], ['forum', '#n-forum']].forEach(function (p) {
-    $(p[1]).setAttribute('aria-current', view === p[0]);
-  });
-
-  var pane = $('#pane');
-  pane.textContent = '';
-
-  if (view === 'forum') return renderForum(pane);
-
-  if (openId) {
-    var m = mailbox.filter(function (x) {
-      return x.id === openId;
-    })[0];
-
-    if (m) return renderRead(pane, m);
-  }
-
-  var list = mailbox.filter(function (m) {
-    return m.folder === 'inbox';
-  });
-
-  if (!list.length) {
-    pane.appendChild(el('div', 'empty', 'No messages.'));
-    return;
-  }
-
-  list.forEach(function (m) {
-    var r = el('button', 'row' + (!m.read ? ' unread' : ''));
-
-    r.appendChild(el('b', '', m.subject || '(no subject)'));
-    r.appendChild(el('small', '', m.from + ' · ' + fmt(m.ts)));
-
-    r.onclick = function () {
-      openId = m.id;
-
-      if (!m.read) {
-        m.read = true;
-        api('read', { id: m.id }).catch(function () {});
-      }
-
-      render();
-    };
-
-    pane.appendChild(r);
-  });
-}
-
-function renderRead(pane, m) {
-  var d = el('div', 'read');
-
-  d.appendChild(el('h2', '', m.subject || '(no subject)'));
-
-  d.appendChild(el(
-    'p',
-    'meta',
-    'From ' + m.from + ' · To ' + m.to + ' · ' + fmt(m.ts)
-  ));
-
-  d.appendChild(el('p', 'body', m.body));
-
-  var a = el('div', 'actions');
-  var b = el('button', 'ghost', 'Back');
-
-  b.onclick = function () {
-    go('inbox');
-  };
-
-  a.appendChild(b);
-  d.appendChild(a);
-  pane.appendChild(d);
-}
-
-/* ---------- anonymous forum ---------- */
-
-async function renderForum(box) {
-  var list = [];
-
-  try {
-    var result = await api('forum', undefined, true);
-    list = Array.isArray(result.posts) ? result.posts : [];
-  } catch (e) {}
-
-  if (box.id === 'pane' && view !== 'forum') return;
-
-  box.textContent = '';
-
-  var wrap = el('div', 'forum');
-  var f = el('form', 'fpost');
-  var t = el('input');
-  var b = el('textarea');
-  var er = el('p', 'err');
-  var btn = el('button', 'btn', 'Post');
-
-  t.placeholder = 'Title (optional)';
-  t.maxLength = 80;
-  t.setAttribute('aria-label', 'Title');
-
-  b.placeholder = 'Say something. You’ll post as Anonymous.';
-  b.maxLength = 500;
-  b.setAttribute('aria-label', 'Post');
-
-  btn.type = 'submit';
-  er.setAttribute('role', 'alert');
-
-  f.append(t, b, er, btn);
-
-  f.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    er.textContent = '';
-
-    if (b.value.trim().length < 2) {
-      er.textContent = 'Write something first.';
-      return;
-    }
-
-    try {
-      await api('forum', {
-        title: t.value.trim(),
-        body: b.value.trim()
-      }, true);
-
-      renderForum(box);
-    } catch (x) {
-      er.textContent = x.message;
-    }
-  });
-
-  wrap.appendChild(f);
-
-  if (!list.length) {
-    wrap.appendChild(el(
-      'div',
-      'empty',
-      'No posts yet. Start the conversation.'
-    ));
-  }
-
-  list.forEach(function (p) {
-    var d = el('article', 'fitem');
-
-    if (p.title) {
-      d.appendChild(el('h3', '', p.title));
-    }
-
-    d.appendChild(el('p', 'fbody', p.body));
-    d.appendChild(el('small', '', p.name + ' · ' + fmt(p.ts)));
-
-    wrap.appendChild(d);
-  });
-
-  box.appendChild(wrap);
-}
-
-/* ---------- start ---------- */
-
-renderForum($('#forum-landing'));
-
-if (token) {
-  start().catch(function () {
-    logoutUI();
-    tab('create');
-  });
-}
-
-})();
+```
