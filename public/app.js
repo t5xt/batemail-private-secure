@@ -34,26 +34,37 @@
   }
 
   function relativeTime(value) {
-    if (!value) return '';
-
+    if (!value) return 'Time unavailable';
     var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-
-    var seconds = Math.max(
-      0,
-      Math.floor((Date.now() - date.getTime()) / 1000)
-    );
-
-    if (seconds < 60) return 'Just now';
+    if (Number.isNaN(date.getTime())) return 'Time unavailable';
+    var seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    if (seconds < 10) return 'Just now';
+    if (seconds < 60) return seconds + 's ago';
     if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+    if (seconds < 86400) {
+      var hours = Math.floor(seconds / 3600);
+      var minutes = Math.floor((seconds % 3600) / 60);
+      return hours + 'h' + (minutes ? ' ' + minutes + 'm' : '') + ' ago';
+    }
     if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
-
-    return date.toLocaleDateString([], {
-      month: 'short',
-      day: 'numeric'
-    });
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
   }
+
+  function liveTime(value, className) {
+    var node = el('span', className, relativeTime(value));
+    if (value && !Number.isNaN(new Date(value).getTime())) {
+      node.dataset.mailTimestamp = value;
+      node.title = new Date(value).toLocaleString();
+    }
+    return node;
+  }
+
+  // Update visible mail timestamps without reloading messages or interrupting reading.
+  setInterval(function () {
+    document.querySelectorAll('[data-mail-timestamp]').forEach(function (node) {
+      node.textContent = relativeTime(node.dataset.mailTimestamp);
+    });
+  }, 1000);
 
   function initials(value) {
     var name = String(value || '?').trim();
@@ -560,7 +571,7 @@
     var content = el('span', 'message-row-content');
     var topLine = el('span', 'message-row-top');
     var sender = el('span', 'message-sender', message.from);
-    var time = el('span', 'message-time', relativeTime(message.ts));
+    var time = liveTime(message.ts, 'message-time');
     var subject = el('span', 'message-subject', message.subject);
     var preview = el(
       'span',
@@ -628,7 +639,7 @@
     var senderDetails = el('div', 'sender-details');
     var sender = el('strong', '', message.from);
     var recipient = el('span', '', 'to ' + (message.to || me));
-    var time = el('span', 'reading-time', relativeTime(message.ts));
+    var time = liveTime(message.ts, 'reading-time');
 
     senderDetails.append(sender, recipient);
     senderLine.append(avatar, senderDetails, time);
