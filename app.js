@@ -21,22 +21,31 @@
     return node;
   }
 
+  // Treat offset-free server timestamps as UTC, then display in the browser timezone.
+  function parseDate(value) {
+    if (value === null || value === undefined || value === '') return NaN;
+    if (typeof value === 'number') return value < 1e12 ? value * 1000 : value;
+    var raw = String(value).trim();
+    if (/^\d{10,13}$/.test(raw)) return raw.length === 10 ? Number(raw) * 1000 : Number(raw);
+    var normalized = raw.replace(' ', 'T');
+    if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(normalized)) normalized += 'Z';
+    return Date.parse(normalized);
+  }
+
+  function localDate(value) {
+    var millis = parseDate(value);
+    return Number.isFinite(millis) ? new Date(millis) : null;
+  }
+
   function fmt(value) {
-    if (!value) return 'Date unavailable';
-
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Date unavailable';
-
-    return date.toLocaleString([], {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    });
+    var date = localDate(value);
+    if (!date) return 'Date unavailable';
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
   function relativeTime(value) {
-    if (!value) return 'Time unavailable';
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Time unavailable';
+    var date = localDate(value);
+    if (!date) return 'Time unavailable';
     var seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
     if (seconds < 10) return 'Just now';
     if (seconds < 60) return seconds + 's ago';
@@ -47,41 +56,25 @@
       return hours + 'h' + (minutes ? ' ' + minutes + 'm' : '') + ' ago';
     }
     if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
   }
 
   function liveTime(value, className) {
     var node = el('span', className, relativeTime(value));
-    if (value && !Number.isNaN(new Date(value).getTime())) {
+    if (localDate(value)) {
       node.dataset.mailTimestamp = value;
-      node.title = new Date(value).toLocaleString();
+      node.title = fmt(value);
     }
     return node;
   }
 
-  // Update visible mail timestamps without reloading messages or interrupting reading.
   setInterval(function () {
     document.querySelectorAll('[data-mail-timestamp]').forEach(function (node) {
-      node.textContent = relativeTime(node.dataset.mailTimestamp);
+      var value = node.dataset.mailTimestamp;
+      node.textContent = relativeTime(value);
+      node.title = fmt(value);
     });
   }, 1000);
-
-  function initials(value) {
-    var name = String(value || '?').trim();
-    return (name.charAt(0) || '?').toUpperCase();
-  }
-
-  function parseDate(value) {
-    var s = String(value || '').trim();
-    if (!s) return 0;
-
-    if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
-      s = s.replace(' ', 'T') + 'Z';
-    }
-
-    var number = Date.parse(s);
-    return Number.isNaN(number) ? 0 : number;
-  }
 
   function showError(selector, message) {
     var node = $(selector);
