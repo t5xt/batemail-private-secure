@@ -1,17 +1,14 @@
-```js
+
 'use strict';
 
 /*
- * BateMail server. No dependencies, Node 18+.
- * Receive-only: users can receive mail but cannot send any.
+ * BateMail — receive-only email server
+ * Requires Node.js 18+; no external dependencies.
  *
- * Storage:
- *   DATA_DIR/batemail.enc (AES-256-GCM encrypted)
+ * Required:
+ *   DATA_KEY="your-private-secret-at-least-16-characters"
  *
- * Start:
- *   DATA_KEY="your-long-secret" node server.js
- *
- * Optional environment:
+ * Optional:
  *   PORT=3000
  *   HOST=0.0.0.0
  *   DOMAIN=batemail.lol
@@ -21,12 +18,13 @@
  *   TRUST_PROXY=1
  */
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const net = require('net');
-const { promisify } = require('util');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const net = require('node:net');
+const { promisify } = require('node:util');
+
 const scrypt = promisify(crypto.scrypt);
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -42,9 +40,14 @@ if (SECRET.length < 16) {
   process.exit(1);
 }
 
-/* ---------- frontend files ---------- */
+if (!/^[a-z0-9.-]+$/.test(DOMAIN) || DOMAIN.startsWith('.') ||
+    DOMAIN.endsWith('.') || DOMAIN.includes('..')) {
+  console.error('DOMAIN is invalid.');
+  process.exit(1);
+}
 
-// Prefer the repository root. Fall back to public/ if root files are absent.
+/* ---------- Frontend ---------- */
+
 function findFrontendFile(name) {
   const candidates = [
     path.join(__dirname, name),
@@ -52,7 +55,11 @@ function findFrontendFile(name) {
   ];
 
   for (const file of candidates) {
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) return file;
+    try {
+      if (fs.statSync(file).isFile()) return file;
+    } catch {
+      // Try the next candidate.
+    }
   }
 
   throw new Error(
@@ -74,64 +81,22 @@ const FRONTEND = {
 console.log('Frontend HTML:', FRONTEND['/'].file);
 console.log('Frontend JS:', FRONTEND['/app.js'].file);
 
-/* ---------- encrypted storage ---------- */
+/* ---------- Encrypted storage ---------- */
 
 let salt;
 let key;
 let db;
 
-function load() {
-  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
-
-  if (fs.existsSync(FILE)) {
-    const f = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-
-    salt = Buffer.from(f.s, 'base64');
-    key = crypto.scryptSync(SECRET, salt, 32);
-
-    try {
-      const decipher = crypto.createDecipheriv(
-        'aes-256-gcm',
-        key,
-        Buffer.from(f.i, 'base64')
-      );
-
-      decipher.setAuthTag(Buffer.from(f.t, 'base64'));
-
-      const plaintext = Buffer.concat([
-        decipher.update(Buffer.from(f.c, 'base64')),
-        decipher.final(),
-      ]);
-
-      db = JSON.parse(plaintext.toString('utf8'));
-
-      if (!db || typeof db !== 'object' ||
-          !db.users || !db.mail || !Array.isArray(db.forum)) {
-        throw new Error('Invalid database structure');
-      }
-    } catch (err) {
-      console.error(
-        'Could not decrypt the data file. Check DATA_KEY and your backup.'
-      );
-      process.exit(1);
-    }
-  } else {
-    salt = crypto.randomBytes(16);
-    key = crypto.scryptSync(SECRET, salt, 32);
-    db = { users: {}, mail: {}, forum: [] };
-    persist();
-  }
-}
-
 function persist() {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
   const encrypted = Buffer.concat([
     cipher.update(JSON.stringify(db), 'utf8'),
     cipher.final(),
   ]);
 
-  const out = JSON.stringify({
+  const output = JSON.stringify({
     v: 1,
     s: salt.toString('base64'),
     i: iv.toString('base64'),
@@ -139,15 +104,82 @@ function persist() {
     c: encrypted.toString('base64'),
   });
 
-  const tmp = FILE + '.tmp';
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
 
-  fs.writeFileSync(tmp, out, { mode: 0o600 });
+  const temp = FILE + '.tmp';
+  fs.writeFileSync(temp, output, { mode: 0o600 });
 
-  if (fs.existsSync(FILE)) {
-    fs.copyFileSync(FILE, FILE + '.bak');
+  try {
+    if (fs.existsSync(FILE)) {
+      fs.copyFileSync(FILE, FILE + '.bak');
+    }
+
+    fs.renameSync(temp, FILE);
+  } catch (err) {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      // Ignore cleanup failure.
+    }
+    throw err;
+  }
+}
+
+function load() {
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+
+  if (!fs.existsSync(FILE)) {
+    salt = crypto.randomBytes(16);
+    key = crypto.scryptSync(SECRET, salt, 32);
+    db = { users: {}, mail: {}, forum: [] };
+    persist();
+    return;
   }
 
-  fs.renameSync(tmp, FILE);
+  try {
+    const stored = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+
+    if (!stored.s || !stored.i || !stored.t || typeof stored.c !== 'string') {
+      throw new Error('Invalid encrypted file format');
+    }
+
+    salt = Buffer.from(stored.s, 'base64');
+    key = crypto.scryptSync(SECRET, salt, 32);
+
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(stored.i, 'base64')
+    );
+
+    decipher.setAuthTag(Buffer.from(stored.t, 'base64'));
+
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(stored.c, 'base64')),
+      decipher.final(),
+    ]);
+
+    const parsed = JSON.parse(plaintext.toString('utf8'));
+
+    if (
+      !parsed ||
+      typeof parsed.users !== 'object' ||
+      parsed.users === null ||
+      typeof parsed.mail !== 'object' ||
+      parsed.mail === null ||
+      !Array.isArray(parsed.forum)
+    ) {
+      throw new Error('Invalid database structure');
+    }
+
+    db = parsed;
+  } catch (err) {
+    console.error(
+      'Could not load the encrypted database. Check DATA_KEY and your backup.'
+    );
+    console.error(err.message);
+    process.exit(1);
+  }
 }
 
 load();
@@ -157,7 +189,7 @@ if (process.argv[2] === 'dump') {
   process.exit(0);
 }
 
-/* ---------- helpers ---------- */
+/* ---------- Helpers ---------- */
 
 const RESERVED = new Set([
   'welcome', 'admin', 'administrator', 'postmaster', 'abuse',
@@ -169,13 +201,17 @@ const sessions = new Map();
 const hits = new Map();
 
 function httpErr(status, message) {
-  const e = new Error(message);
-  e.status = status;
-  return e;
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+function str(value, max) {
+  return String(value == null ? '' : value).slice(0, max);
 }
 
 function rid() {
-  return crypto.randomBytes(8).toString('hex');
+  return crypto.randomBytes(16).toString('hex');
 }
 
 function newSession(email) {
@@ -190,15 +226,17 @@ function newSession(email) {
 }
 
 function authed(req) {
-  const h = req.headers.authorization || '';
+  const header = req.headers.authorization || '';
 
-  if (!h.startsWith('Bearer ')) {
+  if (!header.startsWith('Bearer ')) {
     throw httpErr(401, 'Please log in.');
   }
 
-  const session = sessions.get(h.slice(7));
+  const token = header.slice(7);
+  const session = sessions.get(token);
 
   if (!session || session.exp < Date.now()) {
+    sessions.delete(token);
     throw httpErr(401, 'Please log in.');
   }
 
@@ -216,34 +254,46 @@ function ipOf(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
-function limited(k, max, windowMs) {
+/*
+ * Sliding-window rate limiter.
+ * Expired timestamps are removed per key instead of clearing all limits
+ * on a fixed hourly schedule.
+ */
+function limited(id, max, windowMs) {
   const now = Date.now();
-  const timestamps = (hits.get(k) || [])
-    .filter((t) => now - t < windowMs);
+  const recent = (hits.get(id) || [])
+    .filter((timestamp) => now - timestamp < windowMs);
 
-  if (timestamps.length >= max) {
-    hits.set(k, timestamps);
+  if (recent.length >= max) {
+    hits.set(id, recent);
     return true;
   }
 
-  timestamps.push(now);
-  hits.set(k, timestamps);
+  recent.push(now);
+  hits.set(id, recent);
   return false;
 }
 
 setInterval(() => {
-  hits.clear();
+  const now = Date.now();
+
+  for (const [id, timestamps] of hits) {
+    const recent = timestamps.filter((t) => now - t < 3600e3);
+
+    if (recent.length) hits.set(id, recent);
+    else hits.delete(id);
+  }
 
   for (const [token, session] of sessions) {
-    if (session.exp < Date.now()) sessions.delete(token);
+    if (session.exp < now) sessions.delete(token);
   }
-}, 3600e3).unref();
+}, 10 * 60e3).unref();
 
 function readJson(req, limit = 100 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
-    const chunks = [];
     let rejected = false;
+    const chunks = [];
 
     req.on('data', (chunk) => {
       size += chunk.length;
@@ -260,10 +310,21 @@ function readJson(req, limit = 100 * 1024) {
 
     req.on('end', () => {
       if (rejected) return;
-      if (!chunks.length) return resolve({});
+
+      if (!chunks.length) {
+        resolve({});
+        return;
+      }
 
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          reject(httpErr(400, 'Bad request.'));
+          return;
+        }
+
+        resolve(value);
       } catch {
         reject(httpErr(400, 'Bad request.'));
       }
@@ -273,7 +334,7 @@ function readJson(req, limit = 100 * 1024) {
   });
 }
 
-function json(res, status, obj) {
+function json(res, status, value) {
   if (res.headersSent || res.destroyed) return;
 
   res.writeHead(status, {
@@ -281,10 +342,8 @@ function json(res, status, obj) {
     'Cache-Control': 'no-store',
   });
 
-  res.end(JSON.stringify(obj));
+  res.end(JSON.stringify(value));
 }
-
-const str = (v, max) => String(v == null ? '' : v).slice(0, max);
 
 /* ---------- API ---------- */
 
@@ -297,9 +356,9 @@ async function api(req, res, url) {
       throw httpErr(429, 'Too many sign-ups. Try again later.');
     }
 
-    const b = await readJson(req);
-    const user = str(b.user, 40).trim().toLowerCase();
-    const pass = str(b.pass, 200);
+    const body = await readJson(req);
+    const user = str(body.user, 40).trim().toLowerCase();
+    const pass = str(body.pass, 200);
 
     if (!/^[a-z0-9._-]{3,30}$/.test(user)) {
       throw httpErr(400, 'Username: 3–30 letters, numbers, . - or _');
@@ -318,8 +377,10 @@ async function api(req, res, url) {
     const passwordSalt = crypto.randomBytes(16);
     const passwordHash = await scrypt(pass, passwordSalt, 32);
 
-    // Recheck before inserting the account.
-    if (db.users[email]) throw httpErr(409, 'That email is taken.');
+    // Check again after the asynchronous password hash.
+    if (RESERVED.has(user) || db.users[email]) {
+      throw httpErr(409, 'That email is taken.');
+    }
 
     db.users[email] = {
       s: passwordSalt.toString('base64'),
@@ -353,8 +414,8 @@ async function api(req, res, url) {
       throw httpErr(429, 'Too many attempts. Try again later.');
     }
 
-    const b = await readJson(req);
-    let email = str(b.email, 80).trim().toLowerCase();
+    const body = await readJson(req);
+    let email = str(body.email, 80).trim().toLowerCase();
 
     if (!email.includes('@')) email += '@' + DOMAIN;
 
@@ -367,13 +428,15 @@ async function api(req, res, url) {
       ? Buffer.from(user.s, 'base64')
       : Buffer.alloc(16);
 
-    const passwordHash = await scrypt(str(b.pass, 200), passwordSalt, 32);
+    const passwordHash = await scrypt(str(body.pass, 200), passwordSalt, 32);
 
-    if (!user ||
-        !crypto.timingSafeEqual(
-          passwordHash,
-          Buffer.from(user.h, 'base64')
-        )) {
+    if (
+      !user ||
+      !crypto.timingSafeEqual(
+        passwordHash,
+        Buffer.from(user.h, 'base64')
+      )
+    ) {
       throw httpErr(401, 'Wrong email or password.');
     }
 
@@ -384,9 +447,11 @@ async function api(req, res, url) {
   }
 
   if (route === 'POST /api/logout') {
-    const h = req.headers.authorization || '';
+    const header = req.headers.authorization || '';
 
-    if (h.startsWith('Bearer ')) sessions.delete(h.slice(7));
+    if (header.startsWith('Bearer ')) {
+      sessions.delete(header.slice(7));
+    }
 
     return json(res, 200, { ok: true });
   }
@@ -403,9 +468,9 @@ async function api(req, res, url) {
 
   if (route === 'POST /api/read') {
     const email = authed(req);
-    const b = await readJson(req);
+    const body = await readJson(req);
     const message = (db.mail[email] || [])
-      .find((item) => item.id === b.id);
+      .find((item) => item.id === body.id);
 
     if (message && !message.read) {
       message.read = true;
@@ -428,20 +493,24 @@ async function api(req, res, url) {
       throw httpErr(429, 'Posting too fast. Try again later.');
     }
 
-    const b = await readJson(req, 8 * 1024);
-    const body = str(b.body, 500).trim();
+    const body = await readJson(req, 8 * 1024);
+    const content = str(body.body, 500).trim();
 
-    if (body.length < 2) {
+    if (content.length < 2) {
       throw httpErr(400, 'Write something first.');
     }
 
     db.forum.push({
       id: rid(),
       name: 'Anonymous ' + crypto.randomInt(1000, 10000),
-      title: str(b.title, 80).trim(),
-      body,
+      title: str(body.title, 80).trim(),
+      body: content,
       ts: Date.now(),
     });
+
+    if (db.forum.length > 1000) {
+      db.forum = db.forum.slice(-1000);
+    }
 
     persist();
 
@@ -451,59 +520,74 @@ async function api(req, res, url) {
   throw httpErr(404, 'Not found.');
 }
 
-/* ---------- inbound SMTP: receive only ---------- */
+/* ---------- Inbound SMTP: receive only ---------- */
 
 const SMTP_PORT = Number(process.env.SMTP_PORT) || 2525;
 const SMTP_HOST = process.env.SMTP_HOST || '0.0.0.0';
 const MAX_MSG = 1024 * 1024;
 let smtpOpen = 0;
 
-function qp(s) {
-  s = s.replace(/=\\r?\\n/g, '');
-  const out = [];
+function qp(input) {
+  // Quoted-printable soft line breaks are "=" followed by a newline.
+  const source = input.replace(/=\r?\n/g, '');
+  const bytes = [];
 
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i + 1, 2))) {
-      out.push(parseInt(s.substr(i + 1, 2), 16));
+  for (let i = 0; i < source.length; i++) {
+    if (
+      source[i] === '=' &&
+      /^[0-9a-fA-F]{2}$/.test(source.slice(i + 1, i + 3))
+    ) {
+      bytes.push(parseInt(source.slice(i + 1, i + 3), 16));
       i += 2;
     } else {
-      out.push(s.charCodeAt(i) & 255);
+      bytes.push(source.charCodeAt(i) & 255);
     }
   }
 
-  return Buffer.from(out);
+  return Buffer.from(bytes);
 }
 
-function decodeWords(s) {
-  return s.replace(/(\\?=)\\s+(=\\?)/g, '$1$2')
-    .replace(/=\\?([^?]+)\\?([bBqQ])\\?([^?]*)\\?=/g,
+function decodeWords(input) {
+  return input
+    .replace(/(\?=)\s+(=\?)/g, '$1$2')
+    .replace(
+      /=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g,
       (_, charset, encoding, text) => {
         try {
-          const buf = encoding.toUpperCase() === 'B'
+          const buffer = encoding.toUpperCase() === 'B'
             ? Buffer.from(text, 'base64')
             : qp(text.replace(/_/g, ' '));
 
-          return new TextDecoder(charset).decode(buf);
+          return new TextDecoder(charset).decode(buffer);
         } catch {
           return text;
         }
-      });
+      }
+    );
 }
 
 function parseEntity(raw) {
-  const match = raw.match(/\\r?\\n\\r?\\n/);
-  const head = match ? raw.slice(0, match.index) : raw;
-  const body = match ? raw.slice(match.index + match[0].length) : '';
+  const separator = raw.match(/\r?\n\r?\n/);
+  const head = separator ? raw.slice(0, separator.index) : raw;
+  const body = separator
+    ? raw.slice(separator.index + separator[0].length)
+    : '';
+
   const headers = {};
 
-  head.replace(/\\r?\\n[ \\t]+/g, ' ')
-    .split(/\\r?\\n/)
+  head
+    .replace(/\r?\n[ \t]+/g, ' ')
+    .split(/\r?\n/)
     .forEach((line) => {
-      const i = line.indexOf(':');
+      const index = line.indexOf(':');
 
-      if (i > 0) {
-        const k = line.slice(0, i).trim().toLowerCase();
-        if (!(k in headers)) headers[k] = line.slice(i + 1).trim();
+      if (index > 0) {
+        const name = line.slice(0, index).trim().toLowerCase();
+
+        // Keep the first value for duplicate headers.
+        if (!(name in headers)) {
+          headers[name] = line.slice(index + 1).trim();
+        }
       }
     });
 
@@ -512,40 +596,45 @@ function parseEntity(raw) {
 
 function extract(raw, depth = 0) {
   const { h, body } = parseEntity(raw);
-  const ctRaw = h['content-type'] || 'text/plain';
-  const ct = ctRaw.toLowerCase();
+  const contentType = h['content-type'] || 'text/plain';
+  const typeLower = contentType.toLowerCase();
 
-  if (ct.startsWith('multipart/')) {
-    const out = { plain: '', html: '' };
-    const boundary = /boundary="?([^";]+)"?/i.exec(ctRaw);
+  if (typeLower.startsWith('multipart/')) {
+    const result = { plain: '', html: '' };
+    const boundary = /boundary="?([^";]+)"?/i.exec(contentType);
 
-    if (!boundary || depth > 3) return out;
+    if (!boundary || depth >= 5) return result;
 
     for (const part of body.split('--' + boundary[1]).slice(1)) {
       if (part.startsWith('--')) break;
 
-      const result = extract(part.replace(/^\\r?\\n/, ''), depth + 1);
-      out.plain = out.plain || result.plain;
-      out.html = out.html || result.html;
+      const extracted = extract(part.replace(/^\r?\n/, ''), depth + 1);
+      result.plain = result.plain || extracted.plain;
+      result.html = result.html || extracted.html;
     }
 
-    return out;
+    return result;
   }
 
-  if (/^attachment/i.test(h['content-disposition'] || '')) {
+  if (/^attachment\b/i.test(h['content-disposition'] || '')) {
     return { plain: '', html: '' };
   }
 
   const transferEncoding =
     (h['content-transfer-encoding'] || '7bit').toLowerCase();
 
-  const buffer = transferEncoding === 'base64'
-    ? Buffer.from(body.replace(/\\s+/g, ''), 'base64')
-    : transferEncoding === 'quoted-printable'
-      ? qp(body)
-      : Buffer.from(body, 'latin1');
+  let buffer;
 
-  const charset = (/charset="?([^";\\s]+)"?/i.exec(ctRaw) || [])[1] || 'utf-8';
+  if (transferEncoding === 'base64') {
+    buffer = Buffer.from(body.replace(/\s+/g, ''), 'base64');
+  } else if (transferEncoding === 'quoted-printable') {
+    buffer = qp(body);
+  } else {
+    buffer = Buffer.from(body, 'latin1');
+  }
+
+  const charsetMatch = /charset="?([^";\s]+)"?/i.exec(contentType);
+  const charset = charsetMatch ? charsetMatch[1] : 'utf-8';
   let text;
 
   try {
@@ -554,40 +643,47 @@ function extract(raw, depth = 0) {
     text = buffer.toString('utf8');
   }
 
-  if (ct.startsWith('text/html')) return { plain: '', html: text };
-  if (ct.startsWith('text/')) return { plain: text, html: '' };
+  if (typeLower.startsWith('text/html')) {
+    return { plain: '', html: text };
+  }
+
+  if (typeLower.startsWith('text/')) {
+    return { plain: text, html: '' };
+  }
 
   return { plain: '', html: '' };
 }
 
 function htmlToText(html) {
   return html
-    .replace(/<(style|script)[\\s\\S]*?<\\/\\1>/gi, '')
-    .replace(/<br\\s*\\/?>|<\\/(p|div|tr|h\\d|li)>/gi, '\\n')
+    .replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>|<\/(p|div|tr|h\d|li)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\\n{3,}/g, '\\n\\n')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function deliver(envelope, raw) {
   const { h } = parseEntity(raw);
   const extracted = extract(raw);
+
   const body = (extracted.plain || htmlToText(extracted.html) || '')
-    .replace(/\\r\\n/g, '\\n')
+    .replace(/\r\n/g, '\n')
     .trim();
 
   const from = decodeWords(h.from || '').trim() ||
     envelope.from || 'unknown';
+
   const subject = decodeWords(h.subject || '').trim();
 
   for (const recipient of envelope.rcpt) {
-    if (!db.mail[recipient]) continue;
+    if (!db.users[recipient] || !Array.isArray(db.mail[recipient])) continue;
 
     db.mail[recipient].push({
       id: rid(),
@@ -599,23 +695,28 @@ function deliver(envelope, raw) {
       ts: Date.now(),
       read: false,
     });
+
+    // Bound mailbox growth.
+    if (db.mail[recipient].length > 5000) {
+      db.mail[recipient] = db.mail[recipient].slice(-5000);
+    }
   }
 
   persist();
 }
 
-const smtp = net.createServer((sock) => {
-  const ip = sock.remoteAddress || 'x';
+const smtp = net.createServer((socket) => {
+  const ip = socket.remoteAddress || 'unknown';
 
   if (smtpOpen >= 50 || limited('smtpconn:' + ip, 60, 600e3)) {
-    sock.end('421 Too many connections\\r\\n');
+    socket.end('421 Too many connections\r\n');
     return;
   }
 
   smtpOpen++;
-  sock.setTimeout(120000, () => sock.destroy());
-  sock.on('close', () => smtpOpen--);
-  sock.on('error', () => {});
+  socket.setTimeout(120000, () => socket.destroy());
+  socket.on('close', () => { smtpOpen--; });
+  socket.on('error', () => {});
 
   let envelope;
   let inData;
@@ -624,32 +725,34 @@ const smtp = net.createServer((sock) => {
   let tooBig;
   let buffer = '';
 
-  const reset = () => {
+  function reset() {
     envelope = { from: '', rcpt: [], started: false };
     inData = false;
     lines = [];
     size = 0;
     tooBig = false;
-  };
+  }
 
-  const say = (message) => sock.write(message + '\\r\\n');
+  function say(message) {
+    if (!socket.destroyed) socket.write(message + '\r\n');
+  }
 
   reset();
   say('220 ' + DOMAIN + ' ESMTP');
 
-  sock.on('data', (chunk) => {
+  socket.on('data', (chunk) => {
     buffer += chunk.toString('latin1');
 
-    if (buffer.length > 100000) {
-      sock.destroy();
+    if (buffer.length > MAX_MSG + 10000) {
+      socket.destroy();
       return;
     }
 
-    let i;
+    let newline;
 
-    while ((i = buffer.indexOf('\\n')) >= 0) {
-      let line = buffer.slice(0, i).replace(/\\r$/, '');
-      buffer = buffer.slice(i + 1);
+    while ((newline = buffer.indexOf('\n')) >= 0) {
+      let line = buffer.slice(0, newline).replace(/\r$/, '');
+      buffer = buffer.slice(newline + 1);
 
       if (inData) {
         if (line === '.') {
@@ -659,10 +762,10 @@ const smtp = net.createServer((sock) => {
             say('450 Too many messages, try later');
           } else {
             try {
-              deliver(envelope, lines.join('\\n'));
+              deliver(envelope, lines.join('\r\n'));
               say('250 OK');
             } catch (err) {
-              console.error(err);
+              console.error('SMTP delivery failed:', err);
               say('451 Local error');
             }
           }
@@ -671,11 +774,17 @@ const smtp = net.createServer((sock) => {
           continue;
         }
 
+        // SMTP dot-stuffing: remove one leading dot from doubled dots.
         if (line.startsWith('..')) line = line.slice(1);
 
-        size += line.length + 2;
-        if (size > MAX_MSG) tooBig = true;
-        else lines.push(line);
+        size += Buffer.byteLength(line, 'latin1') + 2;
+
+        if (size > MAX_MSG) {
+          tooBig = true;
+          lines = [];
+        } else if (!tooBig) {
+          lines.push(line);
+        }
 
         continue;
       }
@@ -683,11 +792,14 @@ const smtp = net.createServer((sock) => {
       const command = line.slice(0, 4).toUpperCase();
 
       if (command === 'EHLO') {
-        sock.write('250-' + DOMAIN + '\\r\\n250 SIZE ' + MAX_MSG + '\\r\\n');
+        socket.write(
+          '250-' + DOMAIN + '\r\n' +
+          '250 SIZE ' + MAX_MSG + '\r\n'
+        );
       } else if (command === 'HELO') {
         say('250 ' + DOMAIN);
       } else if (command === 'MAIL') {
-        const match = /^MAIL FROM:\\s*<([^>]*)>/i.exec(line);
+        const match = /^MAIL FROM:\s*<([^>]*)>/i.exec(line);
 
         if (!match) {
           say('501 Bad syntax');
@@ -700,12 +812,14 @@ const smtp = net.createServer((sock) => {
           say('250 OK');
         }
       } else if (command === 'RCPT') {
-        const match = /^RCPT TO:\\s*<([^>]*)>/i.exec(line);
+        const match = /^RCPT TO:\s*<([^>]*)>/i.exec(line);
         const to = match ? match[1].trim().toLowerCase() : '';
 
-        if (!match) say('501 Bad syntax');
-        else if (!envelope.started) say('503 Need MAIL first');
-        else if (!to.endsWith('@' + DOMAIN) || !db.users[to]) {
+        if (!match) {
+          say('501 Bad syntax');
+        } else if (!envelope.started) {
+          say('503 Need MAIL first');
+        } else if (!to.endsWith('@' + DOMAIN) || !db.users[to]) {
           say('550 No such user here');
         } else if (envelope.rcpt.length >= 20) {
           say('452 Too many recipients');
@@ -727,7 +841,7 @@ const smtp = net.createServer((sock) => {
         say('250 OK');
       } else if (command === 'QUIT') {
         say('221 Bye');
-        sock.end();
+        socket.end();
       } else if (command === 'VRFY') {
         say('252 Cannot verify');
       } else {
@@ -812,7 +926,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, err.status, { error: err.message });
     }
 
-    console.error(err);
+    console.error('Request failed:', err);
     return json(res, 500, { error: 'Server error.' });
   }
 });
@@ -828,4 +942,3 @@ server.listen(PORT, HOST, () => {
     ' for ' + DOMAIN
   );
 });
-```
