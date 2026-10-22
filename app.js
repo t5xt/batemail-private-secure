@@ -1,4 +1,3 @@
-```javascript
 (function () {
 'use strict';
 
@@ -711,4 +710,3 @@ if (token) {
 }
 
 })();
-```
