@@ -1,712 +1,822 @@
+
 (function () {
-'use strict';
+  'use strict';
 
-var $ = function (s) {
-  return document.querySelector(s);
-};
+  /* ---------- Helpers ---------- */
 
-function el(tag, className, text) {
-  var node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function fmt(value) {
-  if (!value) return 'Date unavailable';
-
-  var date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return 'Date unavailable';
-
-  return date.toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  });
-}
-
-function relativeTime(value) {
-  if (!value) return '';
-
-  var date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-
-  var seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
-
-  if (seconds < 60) return 'Just now';
-  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
-  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
-  if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
-
-  return date.toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric'
-  });
-}
-
-function initials(value) {
-  var name = String(value || '?').trim();
-  return (name.charAt(0) || '?').toUpperCase();
-}
-
-function parseDate(value) {
-  var s = String(value || '').trim();
-
-  if (!s) return 0;
-
-  // Treat timezone-less server timestamps as UTC.
-  if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
-    s = s.replace(' ', 'T') + 'Z';
-  }
-
-  var number = Date.parse(s);
-  return Number.isNaN(number) ? 0 : number;
-}
-
-var token = null;
-var me = null;
-var mailbox = [];
-var view = 'inbox';
-var openId = null;
-var mailRequest = 0;
-var forumRequest = 0;
-
-try {
-  token = localStorage.getItem('bm_token');
-} catch (e) {}
-
-function setToken(value) {
-  token = value;
-
-  try {
-    if (value) {
-      localStorage.setItem('bm_token', value);
-    } else {
-      localStorage.removeItem('bm_token');
-    }
-  } catch (e) {}
-}
-
-/* ---------- API ---------- */
-
-async function api(path, body, anon) {
-  var options = {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {}
+  var $ = function (selector, root) {
+    return (root || document).querySelector(selector);
   };
 
-  if (token && !anon) {
-    options.headers.Authorization = 'Bearer ' + token;
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
   }
 
-  if (body !== undefined) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
+  function on(selector, event, handler) {
+    var node = $(selector);
+    if (node) node.addEventListener(event, handler);
+    return node;
   }
 
-  var response = await fetch(
-    'https://api.batemail.lol/api/' + path,
-    options
-  );
+  function fmt(value) {
+    if (!value) return 'Date unavailable';
 
-  var result = {};
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
 
-  try {
-    result = await response.json();
-  } catch (e) {}
-
-  if (!response.ok) {
-    var error = new Error(result.error || 'Something went wrong.');
-    error.status = response.status;
-    throw error;
+    return date.toLocaleString([], {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
   }
 
-  return result;
-}
+  function relativeTime(value) {
+    if (!value) return '';
 
-/* ---------- Authentication ---------- */
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
 
-function tab(which) {
-  ['create', 'login'].forEach(function (name) {
-    $('#f-' + name).hidden = name !== which;
-    $('#t-' + name).setAttribute(
-      'aria-selected',
-      String(name === which)
+    var seconds = Math.max(
+      0,
+      Math.floor((Date.now() - date.getTime()) / 1000)
     );
+
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+    if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+
+    return date.toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+
+  function initials(value) {
+    var name = String(value || '?').trim();
+    return (name.charAt(0) || '?').toUpperCase();
+  }
+
+  function parseDate(value) {
+    var s = String(value || '').trim();
+    if (!s) return 0;
+
+    if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+      s = s.replace(' ', 'T') + 'Z';
+    }
+
+    var number = Date.parse(s);
+    return Number.isNaN(number) ? 0 : number;
+  }
+
+  function showError(selector, message) {
+    var node = $(selector);
+    if (node) node.textContent = message || '';
+  }
+
+  function setHidden(selector, hidden) {
+    var node = $(selector);
+    if (node) node.hidden = hidden;
+  }
+
+  /* ---------- State ---------- */
+
+  var token = null;
+  var me = null;
+  var mailbox = [];
+  var view = 'inbox';
+  var openId = null;
+  var mailRequest = 0;
+  var forumRequest = 0;
+  var startRequest = 0;
+
+  try {
+    token = localStorage.getItem('bm_token');
+  } catch (error) {
+    console.warn('BateMail cannot access local storage:', error);
+  }
+
+  function setToken(value) {
+    token = value;
+
+    try {
+      if (value) {
+        localStorage.setItem('bm_token', value);
+      } else {
+        localStorage.removeItem('bm_token');
+      }
+    } catch (error) {
+      console.warn('BateMail could not save the session:', error);
+    }
+  }
+
+  /* ---------- API ---------- */
+
+  async function api(path, body, anon) {
+    var options = {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        Accept: 'application/json'
+      }
+    };
+
+    if (token && !anon) {
+      options.headers.Authorization = 'Bearer ' + token;
+    }
+
+    if (body !== undefined) {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(body);
+    }
+
+    var response;
+
+    try {
+      response = await fetch(
+        'https://api.batemail.lol/api/' + path,
+        options
+      );
+    } catch (error) {
+      throw new Error(
+        'Cannot reach the BateMail server. Check your connection or try again later.'
+      );
+    }
+
+    var result = {};
+
+    try {
+      result = await response.json();
+    } catch (error) {
+      // The server did not return JSON.
+    }
+
+    if (!response.ok) {
+      var message =
+        result && typeof result.error === 'string'
+          ? result.error
+          : 'Request failed (' + response.status + ').';
+
+      var apiError = new Error(message);
+      apiError.status = response.status;
+      throw apiError;
+    }
+
+    return result;
+  }
+
+  /* ---------- Authentication tabs ---------- */
+
+  function tab(which) {
+    ['create', 'login'].forEach(function (name) {
+      var form = $('#f-' + name);
+      var button = $('#t-' + name);
+
+      if (form) form.hidden = name !== which;
+
+      if (button) {
+        button.setAttribute(
+          'aria-selected',
+          String(name === which)
+        );
+      }
+    });
+  }
+
+  on('#t-create', 'click', function () {
+    tab('create');
   });
-}
 
-$('#t-create').onclick = function () {
-  tab('create');
-};
+  on('#t-login', 'click', function () {
+    tab('login');
+  });
 
-$('#t-login').onclick = function () {
-  tab('login');
-};
+  /* ---------- Registration ---------- */
 
-$('#f-create').addEventListener('submit', async function (event) {
-  event.preventDefault();
+  on('#f-create', 'submit', async function (event) {
+    event.preventDefault();
 
-  var errorBox = $('#c-err');
-  errorBox.textContent = '';
+    showError('#c-err', '');
 
-  var username = $('#c-user').value.trim().toLowerCase();
-  var password = $('#c-pass').value;
+    var usernameNode = $('#c-user');
+    var passwordNode = $('#c-pass');
 
-  if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
-    errorBox.textContent =
-      'Username: 3–30 letters, numbers, . - or _';
-    return;
+    if (!usernameNode || !passwordNode) {
+      showError('#c-err', 'Registration form is incomplete.');
+      return;
+    }
+
+    var username = usernameNode.value.trim().toLowerCase();
+    var password = passwordNode.value;
+
+    if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+      showError(
+        '#c-err',
+        'Username: 3–30 letters, numbers, . - or _'
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      showError(
+        '#c-err',
+        'Password must be at least 6 characters.'
+      );
+      return;
+    }
+
+    var submit = $('button[type="submit"]', $('#f-create'));
+    if (submit) submit.disabled = true;
+
+    try {
+      var result = await api('register', {
+        user: username,
+        pass: password
+      }, true);
+
+      if (!result.token) {
+        throw new Error('The server did not return a login token.');
+      }
+
+      setToken(result.token);
+      passwordNode.value = '';
+
+      await start();
+    } catch (error) {
+      showError('#c-err', error.message);
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+
+  /* ---------- Login ---------- */
+
+  on('#f-login', 'submit', async function (event) {
+    event.preventDefault();
+
+    showError('#l-err', '');
+
+    var emailNode = $('#l-mail');
+    var passwordNode = $('#l-pass');
+
+    if (!emailNode || !passwordNode) {
+      showError('#l-err', 'Login form is incomplete.');
+      return;
+    }
+
+    var submit = $('button[type="submit"]', $('#f-login'));
+    if (submit) submit.disabled = true;
+
+    try {
+      var result = await api('login', {
+        email: emailNode.value.trim(),
+        pass: passwordNode.value
+      }, true);
+
+      if (!result.token) {
+        throw new Error('The server did not return a login token.');
+      }
+
+      setToken(result.token);
+      passwordNode.value = '';
+
+      await start();
+    } catch (error) {
+      showError('#l-err', error.message);
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+
+  /* ---------- Mailbox ---------- */
+
+  async function loadMail() {
+    var request = ++mailRequest;
+    var result = await api('mail');
+
+    if (request !== mailRequest) return;
+
+    me = result.email || '';
+
+    mailbox = (Array.isArray(result.mail) ? result.mail : [])
+      .map(function (message) {
+        var timestamp =
+          message.received_at ||
+          message.ts ||
+          message.created_at ||
+          '';
+
+        return {
+          id: message.id,
+          from: message.sender || message.from || 'Unknown sender',
+          to: message.recipient || message.to || me,
+          subject: message.subject || '(no subject)',
+          body: message.body || '',
+          ts: timestamp,
+          read: Boolean(
+            message.is_read !== undefined
+              ? message.is_read
+              : message.read
+          ),
+          folder: message.folder || 'inbox'
+        };
+      })
+      .sort(function (a, b) {
+        return parseDate(b.ts) - parseDate(a.ts);
+      });
   }
 
-  if (password.length < 6) {
-    errorBox.textContent =
-      'Password must be at least 6 characters.';
-    return;
-  }
-
-  try {
-    var result = await api('register', {
-      user: username,
-      pass: password
-    });
-
-    setToken(result.token);
-    $('#c-pass').value = '';
-
-    await start();
-  } catch (error) {
-    errorBox.textContent = error.message;
-  }
-});
-
-$('#f-login').addEventListener('submit', async function (event) {
-  event.preventDefault();
-
-  var errorBox = $('#l-err');
-  errorBox.textContent = '';
-
-  try {
-    var result = await api('login', {
-      email: $('#l-mail').value.trim(),
-      pass: $('#l-pass').value
-    });
-
-    setToken(result.token);
-    $('#l-pass').value = '';
-
-    await start();
-  } catch (error) {
-    errorBox.textContent = error.message;
-  }
-});
-
-/* ---------- Mailbox data ---------- */
-
-async function loadMail() {
-  var request = ++mailRequest;
-  var result = await api('mail');
-
-  // Ignore an older response if a newer refresh has started.
-  if (request !== mailRequest) return;
-
-  me = result.email || '';
-
-  mailbox = (Array.isArray(result.mail) ? result.mail : [])
-    .map(function (message) {
-      var timestamp =
-        message.received_at ||
-        message.ts ||
-        message.created_at ||
-        '';
-
-      return {
-        id: message.id,
-        from: message.sender || message.from || 'Unknown sender',
-        to: message.recipient || message.to || me,
-        subject: message.subject || '(no subject)',
-        body: message.body || '',
-        ts: timestamp,
-        read: Boolean(
-          message.is_read !== undefined
-            ? message.is_read
-            : message.read
-        ),
-        folder: message.folder || 'inbox'
-      };
-    })
-    .sort(function (a, b) {
-      return parseDate(b.ts) - parseDate(a.ts);
-    });
-
-  console.log('BateMail: emails loaded:', mailbox.length);
-}
-
-async function start() {
-  await loadMail();
-
-  view = 'inbox';
-  openId = null;
-
-  $('#auth').hidden = true;
-  $('#app').hidden = false;
-  $('#me').textContent = me;
-
-  render();
-}
-
-function logoutUI() {
-  setToken(null);
-
-  me = null;
-  mailbox = [];
-  openId = null;
-  view = 'inbox';
-
-  $('#app').hidden = true;
-  $('#auth').hidden = false;
-
-  tab('login');
-}
-
-$('#out').onclick = async function () {
-  var button = $('#out');
-  button.disabled = true;
-
-  try {
-    await api('logout', {});
-  } catch (error) {
-    console.warn('BateMail logout request failed:', error);
-  } finally {
-    logoutUI();
-    button.disabled = false;
-  }
-};
-
-/* ---------- Navigation ---------- */
-
-function go(nextView) {
-  view = nextView;
-
-  if (nextView !== 'inbox') {
-    openId = null;
-  }
-
-  render();
-}
-
-$('#n-inbox').onclick = function () {
-  go('inbox');
-};
-
-$('#n-forum').onclick = function () {
-  go('forum');
-};
-
-/* ---------- Animated refresh ---------- */
-
-var refreshButton = $('#refresh-mail');
-
-if (refreshButton) {
-  refreshButton.addEventListener('click', async function () {
-    if (refreshButton.disabled) return;
-
-    refreshButton.disabled = true;
-    refreshButton.classList.add('is-refreshing');
-    refreshButton.setAttribute('aria-label', 'Refreshing mail');
-    refreshButton.setAttribute('title', 'Refreshing mail');
+  async function start() {
+    var request = ++startRequest;
 
     try {
       await loadMail();
 
-      // Keep the selected email open if it still exists.
-      if (openId !== null && !mailbox.some(function (message) {
-        return String(message.id) === String(openId);
-      })) {
-        openId = null;
-      }
+      if (request !== startRequest) return;
+
+      view = 'inbox';
+      openId = null;
+
+      setHidden('#auth', true);
+      setHidden('#app', false);
+
+      var meNode = $('#me');
+      if (meNode) meNode.textContent = me || '';
 
       render();
     } catch (error) {
-      console.error('BateMail refresh failed:', error);
-      showRefreshError(error.message);
+      if (request !== startRequest) return;
+      throw error;
+    }
+  }
+
+  function logoutUI() {
+    startRequest++;
+    mailRequest++;
+    forumRequest++;
+
+    setToken(null);
+
+    me = null;
+    mailbox = [];
+    openId = null;
+    view = 'inbox';
+
+    setHidden('#app', true);
+    setHidden('#auth', false);
+
+    tab('login');
+    showError('#l-err', '');
+    showError('#c-err', '');
+  }
+
+  on('#out', 'click', async function (event) {
+    var button = event.currentTarget;
+    button.disabled = true;
+
+    try {
+      await api('logout', {});
+    } catch (error) {
+      console.warn('BateMail logout request failed:', error);
     } finally {
-      window.setTimeout(function () {
+      logoutUI();
+      button.disabled = false;
+    }
+  });
+
+  /* ---------- Navigation ---------- */
+
+  function go(nextView) {
+    view = nextView;
+    openId = null;
+    render();
+  }
+
+  on('#n-inbox', 'click', function () {
+    go('inbox');
+  });
+
+  on('#n-forum', 'click', function () {
+    go('forum');
+  });
+
+  /* ---------- Refresh ---------- */
+
+  var refreshButton = $('#refresh-mail');
+
+  if (refreshButton) {
+    refreshButton.addEventListener('click', async function () {
+      if (refreshButton.disabled) return;
+
+      refreshButton.disabled = true;
+      refreshButton.classList.add('is-refreshing');
+
+      try {
+        await loadMail();
+
+        if (openId !== null && !mailbox.some(function (message) {
+          return String(message.id) === String(openId);
+        })) {
+          openId = null;
+        }
+
+        render();
+      } catch (error) {
+        console.error('BateMail refresh failed:', error);
+        showRefreshError(error.message);
+      } finally {
         refreshButton.classList.remove('is-refreshing');
         refreshButton.disabled = false;
         refreshButton.setAttribute('aria-label', 'Refresh mail');
         refreshButton.setAttribute('title', 'Refresh mail');
-      }, 450);
-    }
-  });
-}
-
-function showRefreshError(message) {
-  var pane = $('#pane');
-  if (!pane || view !== 'inbox') return;
-
-  var notice = el('p', 'refresh-error',
-    'Could not refresh mail. ' + (message || 'Please try again.')
-  );
-
-  notice.setAttribute('role', 'status');
-  pane.prepend(notice);
-
-  window.setTimeout(function () {
-    if (notice.parentNode) notice.remove();
-  }, 5000);
-}
-
-/* ---------- Main rendering ---------- */
-
-function render() {
-  var unreadCount = mailbox.filter(function (message) {
-    return message.folder === 'inbox' && !message.read;
-  }).length;
-
-  $('#cnt').textContent = unreadCount || '';
-
-  [
-    ['inbox', '#n-inbox'],
-    ['forum', '#n-forum']
-  ].forEach(function (item) {
-    $(item[1]).setAttribute(
-      'aria-current',
-      String(view === item[0])
-    );
-  });
-
-  var pane = $('#pane');
-  pane.textContent = '';
-
-  if (view === 'forum') {
-    renderForum(pane);
-    return;
+      }
+    });
   }
 
-  renderInbox(pane);
-}
+  function showRefreshError(message) {
+    var pane = $('#pane');
+    if (!pane || view !== 'inbox') return;
 
-/* ---------- Three-panel inbox ---------- */
-
-function renderInbox(pane) {
-  var layout = el('div', 'mail-layout');
-  var listPanel = el('section', 'message-list');
-  var readingPanel = el('section', 'message-reading');
-
-  listPanel.setAttribute('aria-label', 'Inbox messages');
-  readingPanel.setAttribute('aria-label', 'Selected email');
-
-  var inboxMessages = mailbox.filter(function (message) {
-    return message.folder === 'inbox';
-  });
-
-  var listHeader = el('div', 'message-list-header');
-  var headerText = el('div', 'message-list-heading');
-
-  headerText.appendChild(el('h1', '', 'Inbox'));
-  headerText.appendChild(el(
-    'p',
-    '',
-    inboxMessages.length + (
-      inboxMessages.length === 1 ? ' message' : ' messages'
-    )
-  ));
-
-  listHeader.appendChild(headerText);
-  listPanel.appendChild(listHeader);
-
-  if (!inboxMessages.length) {
-    listPanel.appendChild(
-      el('div', 'empty', 'No messages yet. Your inbox is ready.')
+    var notice = el(
+      'p',
+      'refresh-error',
+      'Could not refresh mail. ' + (message || 'Please try again.')
     );
 
-    renderEmptyReadingPane(readingPanel);
-  } else {
-    var selected = inboxMessages.find(function (message) {
-      return openId !== null &&
-        String(message.id) === String(openId);
-    });
+    notice.setAttribute('role', 'status');
+    pane.prepend(notice);
+  }
 
-    if (!selected) {
-      selected = inboxMessages[0];
-      openId = selected.id;
+  /* ---------- Main rendering ---------- */
+
+  function render() {
+    var pane = $('#pane');
+    if (!pane) {
+      console.error('BateMail: missing #pane element in HTML.');
+      return;
     }
 
-    inboxMessages.forEach(function (message) {
+    var count = $('#cnt');
+    var unreadCount = mailbox.filter(function (message) {
+      return message.folder === 'inbox' && !message.read;
+    }).length;
+
+    if (count) count.textContent = unreadCount || '';
+
+    [
+      ['inbox', '#n-inbox'],
+      ['forum', '#n-forum']
+    ].forEach(function (item) {
+      var button = $(item[1]);
+
+      if (button) {
+        button.setAttribute(
+          'aria-current',
+          String(view === item[0])
+        );
+      }
+    });
+
+    pane.textContent = '';
+
+    if (view === 'forum') {
+      renderForum(pane);
+    } else {
+      renderInbox(pane);
+    }
+  }
+
+  /* ---------- Inbox layout ---------- */
+
+  function renderInbox(pane) {
+    var layout = el('div', 'mail-layout');
+    var listPanel = el('section', 'message-list');
+    var readingPanel = el('section', 'message-reading');
+
+    listPanel.setAttribute('aria-label', 'Inbox messages');
+    readingPanel.setAttribute('aria-label', 'Selected email');
+
+    var inboxMessages = mailbox.filter(function (message) {
+      return message.folder === 'inbox';
+    });
+
+    var listHeader = el('div', 'message-list-header');
+    var headerText = el('div', 'message-list-heading');
+
+    headerText.appendChild(el('h1', '', 'Inbox'));
+    headerText.appendChild(el(
+      'p',
+      '',
+      inboxMessages.length +
+        (inboxMessages.length === 1 ? ' message' : ' messages')
+    ));
+
+    listHeader.appendChild(headerText);
+    listPanel.appendChild(listHeader);
+
+    if (!inboxMessages.length) {
       listPanel.appendChild(
-        renderMessageRow(message, selected)
+        el('div', 'empty', 'No messages yet. Your inbox is ready.')
       );
-    });
-
-    renderRead(readingPanel, selected);
-  }
-
-  layout.appendChild(listPanel);
-  layout.appendChild(readingPanel);
-  pane.appendChild(layout);
-}
-
-function renderMessageRow(message, selected) {
-  var row = el(
-    'button',
-    'message-row' +
-      (!message.read ? ' unread' : '') +
-      (
-        selected &&
-        String(selected.id) === String(message.id)
-          ? ' selected'
-          : ''
-      )
-  );
-
-  row.type = 'button';
-  row.setAttribute(
-    'aria-pressed',
-    String(
-      selected &&
-      String(selected.id) === String(message.id)
-    )
-  );
-
-  var avatar = el('span', 'message-avatar', initials(message.from));
-  var content = el('span', 'message-row-content');
-  var topLine = el('span', 'message-row-top');
-  var sender = el('span', 'message-sender', message.from);
-  var time = el('span', 'message-time', relativeTime(message.ts));
-  var subject = el('span', 'message-subject', message.subject);
-  var preview = el('span', 'message-preview', previewText(message.body));
-
-  topLine.append(sender, time);
-  content.append(topLine, subject, preview);
-  row.append(avatar, content);
-
-  if (!message.read) {
-    row.appendChild(el('span', 'unread-dot'));
-  }
-
-  row.addEventListener('click', function () {
-    openId = message.id;
-
-    if (!message.read) {
-      // Update the interface immediately.
-      message.read = true;
-      render();
-
-      // Keep the server's existing read endpoint.
-      api('read', { id: message.id }).catch(function (error) {
-        console.warn('BateMail could not mark email as read:', error);
+      renderEmptyReadingPane(readingPanel);
+    } else {
+      var selected = inboxMessages.find(function (message) {
+        return openId !== null &&
+          String(message.id) === String(openId);
       });
 
-      return;
+      if (!selected) {
+        selected = inboxMessages[0];
+        openId = selected.id;
+      }
+
+      inboxMessages.forEach(function (message) {
+        listPanel.appendChild(renderMessageRow(message, selected));
+      });
+
+      renderRead(readingPanel, selected);
     }
 
-    render();
-  });
-
-  return row;
-}
-
-function previewText(body) {
-  var text = String(body || '').replace(/\s+/g, ' ').trim();
-
-  if (!text) return 'No message preview available.';
-  if (text.length > 100) return text.slice(0, 100) + '…';
-
-  return text;
-}
-
-function renderEmptyReadingPane(panel) {
-  var empty = el('div', 'reading-empty');
-
-  empty.appendChild(el('div', 'reading-empty-icon', '✉'));
-  empty.appendChild(el('h2', '', 'Your inbox, at a glance'));
-  empty.appendChild(el(
-    'p',
-    '',
-    'When you receive a message, select it to read it here.'
-  ));
-
-  panel.appendChild(empty);
-}
-
-/* ---------- Selected email ---------- */
-
-function renderRead(panel, message) {
-  var header = el('div', 'reading-header');
-  var title = el('h2', '', message.subject);
-  var senderLine = el('div', 'reading-sender-line');
-
-  var avatar = el('span', 'sender-avatar', initials(message.from));
-  var senderDetails = el('div', 'sender-details');
-  var sender = el('strong', '', message.from);
-  var recipient = el('span', '', 'to ' + (message.to || me));
-  var time = el('span', 'reading-time', relativeTime(message.ts));
-
-  senderDetails.append(sender, recipient);
-  senderLine.append(avatar, senderDetails, time);
-  header.append(title, senderLine);
-
-  var bodyCard = el('div', 'email-body-card');
-  var brand = el('div', 'email-brand');
-  var logo = el('span', 'email-brand-icon', '✉');
-  var brandName = el('span', '', 'Message');
-
-  brand.append(logo, brandName);
-
-  var body = el('div', 'email-body-text');
-  body.textContent = message.body || '(This email has no text body.)';
-
-  bodyCard.append(brand, body);
-
-  var details = el('div', 'email-details');
-  details.appendChild(el('div', '', 'From: ' + message.from));
-  details.appendChild(el('div', '', 'To: ' + (message.to || me)));
-  details.appendChild(el('div', '', 'Received: ' + fmt(message.ts)));
-
-  var actions = el('div', 'reading-actions');
-  var back = el('button', 'ghost', '← Back to inbox');
-
-  back.type = 'button';
-  back.onclick = function () {
-    openId = null;
-    render();
-  };
-
-  actions.appendChild(back);
-
-  panel.append(header, bodyCard, details, actions);
-}
-
-/* ---------- Anonymous forum ---------- */
-
-async function renderForum(box) {
-  var request = ++forumRequest;
-  box.textContent = '';
-
-  var loading = el('div', 'empty', 'Loading forum…');
-  box.appendChild(loading);
-
-  var list = [];
-
-  try {
-    var result = await api('forum', undefined, true);
-    list = Array.isArray(result.posts) ? result.posts : [];
-  } catch (error) {
-    if (request !== forumRequest || view !== 'forum') return;
-
-    box.textContent = '';
-    box.appendChild(el(
-      'div',
-      'empty',
-      'Could not load forum posts. Please try again.'
-    ));
-
-    var retry = el('button', 'ghost', 'Retry');
-    retry.type = 'button';
-    retry.onclick = function () {
-      renderForum(box);
-    };
-    box.appendChild(retry);
-    return;
+    layout.append(listPanel, readingPanel);
+    pane.appendChild(layout);
   }
 
-  if (request !== forumRequest) return;
+  function renderMessageRow(message, selected) {
+    var isSelected = selected &&
+      String(selected.id) === String(message.id);
 
-  if (box.id === 'pane' && view !== 'forum') return;
+    var row = el(
+      'button',
+      'message-row' +
+        (!message.read ? ' unread' : '') +
+        (isSelected ? ' selected' : '')
+    );
 
-  box.textContent = '';
+    row.type = 'button';
+    row.setAttribute('aria-pressed', String(Boolean(isSelected)));
 
-  var wrap = el('div', 'forum');
-  var form = el('form', 'fpost');
-  var titleInput = el('input');
-  var bodyInput = el('textarea');
-  var error = el('p', 'err');
-  var submit = el('button', 'btn', 'Post anonymously');
+    var avatar = el('span', 'message-avatar', initials(message.from));
+    var content = el('span', 'message-row-content');
+    var topLine = el('span', 'message-row-top');
+    var sender = el('span', 'message-sender', message.from);
+    var time = el('span', 'message-time', relativeTime(message.ts));
+    var subject = el('span', 'message-subject', message.subject);
+    var preview = el(
+      'span',
+      'message-preview',
+      previewText(message.body)
+    );
 
-  titleInput.placeholder = 'Title (optional)';
-  titleInput.maxLength = 80;
-  titleInput.setAttribute('aria-label', 'Title');
+    topLine.append(sender, time);
+    content.append(topLine, subject, preview);
+    row.append(avatar, content);
 
-  bodyInput.placeholder = 'Say something. You’ll post as Anonymous.';
-  bodyInput.maxLength = 500;
-  bodyInput.setAttribute('aria-label', 'Post');
-  bodyInput.rows = 4;
+    if (!message.read) {
+      row.appendChild(el('span', 'unread-dot'));
+    }
 
-  submit.type = 'submit';
-  error.setAttribute('role', 'alert');
+    row.addEventListener('click', function () {
+      openId = message.id;
 
-  form.append(titleInput, bodyInput, error, submit);
+      if (!message.read) {
+        message.read = true;
+        render();
 
-  form.addEventListener('submit', async function (event) {
-    event.preventDefault();
-    error.textContent = '';
+        api('read', { id: message.id }).catch(function (error) {
+          console.warn('Could not mark message as read:', error);
+        });
+      } else {
+        render();
+      }
+    });
 
-    var bodyText = bodyInput.value.trim();
+    return row;
+  }
 
-    if (bodyText.length < 2) {
-      error.textContent = 'Write something first.';
+  function previewText(body) {
+    var text = String(body || '').replace(/\s+/g, ' ').trim();
+
+    if (!text) return 'No message preview available.';
+    if (text.length > 100) return text.slice(0, 100) + '…';
+
+    return text;
+  }
+
+  function renderEmptyReadingPane(panel) {
+    var empty = el('div', 'reading-empty');
+
+    empty.appendChild(el('div', 'reading-empty-icon', '✉'));
+    empty.appendChild(el('h2', '', 'Your inbox, at a glance'));
+    empty.appendChild(el(
+      'p',
+      '',
+      'When you receive a message, select it to read it here.'
+    ));
+
+    panel.appendChild(empty);
+  }
+
+  /* ---------- Selected message ---------- */
+
+  function renderRead(panel, message) {
+    var header = el('div', 'reading-header');
+    var title = el('h2', '', message.subject);
+    var senderLine = el('div', 'reading-sender-line');
+
+    var avatar = el('span', 'sender-avatar', initials(message.from));
+    var senderDetails = el('div', 'sender-details');
+    var sender = el('strong', '', message.from);
+    var recipient = el('span', '', 'to ' + (message.to || me));
+    var time = el('span', 'reading-time', relativeTime(message.ts));
+
+    senderDetails.append(sender, recipient);
+    senderLine.append(avatar, senderDetails, time);
+    header.append(title, senderLine);
+
+    var bodyCard = el('div', 'email-body-card');
+    var brand = el('div', 'email-brand');
+
+    brand.append(
+      el('span', 'email-brand-icon', '✉'),
+      el('span', '', 'Message')
+    );
+
+    var body = el('div', 'email-body-text');
+    body.textContent = message.body || '(This email has no text body.)';
+
+    bodyCard.append(brand, body);
+
+    var details = el('div', 'email-details');
+    details.appendChild(el('div', '', 'From: ' + message.from));
+    details.appendChild(el('div', '', 'To: ' + (message.to || me)));
+    details.appendChild(el('div', '', 'Received: ' + fmt(message.ts)));
+
+    var actions = el('div', 'reading-actions');
+    var back = el('button', 'ghost', '← Back to inbox');
+
+    back.type = 'button';
+    back.onclick = function () {
+      openId = null;
+      render();
+    };
+
+    actions.appendChild(back);
+    panel.append(header, bodyCard, details, actions);
+  }
+
+  /* ---------- Anonymous forum ---------- */
+
+  async function renderForum(box) {
+    if (!box) {
+      console.warn('BateMail: forum container is missing.');
       return;
     }
 
-    submit.disabled = true;
-    submit.textContent = 'Posting…';
+    var request = ++forumRequest;
+    box.textContent = '';
+    box.appendChild(el('div', 'empty', 'Loading forum…'));
 
     try {
-      await api('forum', {
-        title: titleInput.value.trim(),
-        body: bodyText
-      }, true);
+      var result = await api('forum', undefined, true);
 
-      renderForum(box);
-    } catch (problem) {
-      error.textContent = problem.message;
-    } finally {
-      submit.disabled = false;
-      submit.textContent = 'Post anonymously';
+      if (request !== forumRequest) return;
+      if (box.id === 'pane' && view !== 'forum') return;
+
+      var posts = Array.isArray(result.posts) ? result.posts : [];
+      box.textContent = '';
+
+      var wrap = el('div', 'forum');
+      var form = el('form', 'fpost');
+      var titleInput = el('input');
+      var bodyInput = el('textarea');
+      var error = el('p', 'err');
+      var submit = el('button', 'btn', 'Post anonymously');
+
+      titleInput.placeholder = 'Title (optional)';
+      titleInput.maxLength = 80;
+      titleInput.setAttribute('aria-label', 'Title');
+
+      bodyInput.placeholder = 'Say something. You’ll post as Anonymous.';
+      bodyInput.maxLength = 500;
+      bodyInput.setAttribute('aria-label', 'Post');
+      bodyInput.rows = 4;
+
+      submit.type = 'submit';
+      error.setAttribute('role', 'alert');
+
+      form.append(titleInput, bodyInput, error, submit);
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        error.textContent = '';
+
+        var bodyText = bodyInput.value.trim();
+
+        if (bodyText.length < 2) {
+          error.textContent = 'Write something first.';
+          return;
+        }
+
+        submit.disabled = true;
+        submit.textContent = 'Posting…';
+
+        try {
+          await api('forum', {
+            title: titleInput.value.trim(),
+            body: bodyText
+          }, true);
+
+          await renderForum(box);
+        } catch (problem) {
+          error.textContent = problem.message;
+        } finally {
+          submit.disabled = false;
+          submit.textContent = 'Post anonymously';
+        }
+      });
+
+      wrap.appendChild(form);
+
+      if (!posts.length) {
+        wrap.appendChild(el(
+          'div',
+          'empty',
+          'No posts yet. Start the conversation.'
+        ));
+      }
+
+      posts.forEach(function (post) {
+        var item = el('article', 'fitem');
+
+        if (post.title) {
+          item.appendChild(el('h3', '', post.title));
+        }
+
+        item.appendChild(el('p', 'fbody', post.body || ''));
+        item.appendChild(el(
+          'small',
+          '',
+          (post.name || 'Anonymous') + ' · ' + fmt(post.ts)
+        ));
+
+        wrap.appendChild(item);
+      });
+
+      box.appendChild(wrap);
+    } catch (error) {
+      if (request !== forumRequest) return;
+      if (box.id === 'pane' && view !== 'forum') return;
+
+      box.textContent = '';
+      box.appendChild(el(
+        'div',
+        'empty',
+        'Could not load forum posts. ' + error.message
+      ));
+
+      var retry = el('button', 'ghost', 'Retry');
+      retry.type = 'button';
+      retry.onclick = function () {
+        renderForum(box);
+      };
+
+      box.appendChild(retry);
     }
-  });
-
-  wrap.appendChild(form);
-
-  if (!list.length) {
-    wrap.appendChild(el(
-      'div',
-      'empty',
-      'No posts yet. Start the conversation.'
-    ));
   }
 
-  list.forEach(function (post) {
-    var item = el('article', 'fitem');
+  /* ---------- Landing-page forum ---------- */
 
-    if (post.title) {
-      item.appendChild(el('h3', '', post.title));
-    }
+  var forumLanding = $('#forum-landing');
 
-    item.appendChild(el('p', 'fbody', post.body || ''));
-    item.appendChild(el(
-      'small',
-      '',
-      (post.name || 'Anonymous') + ' · ' + fmt(post.ts)
-    ));
+  if (forumLanding) {
+    renderForum(forumLanding);
+  }
 
-    wrap.appendChild(item);
-  });
+  /* ---------- Restore existing session ---------- */
 
-  box.appendChild(wrap);
-}
+  if (token) {
+    start().catch(function (error) {
+      console.error('BateMail startup failed:', error);
 
-/* ---------- Public forum on the landing page ---------- */
-
-renderForum($('#forum-landing'));
-
-if (token) {
-  start().catch(function (error) {
-    console.error('BateMail startup failed:', error);
-    logoutUI();
+      // Only clear the session for authentication failures.
+      if (error.status === 401 || error.status === 403) {
+        logoutUI();
+      } else {
+        setHidden('#app', true);
+        setHidden('#auth', false);
+        showError(
+          '#l-err',
+          'Could not connect to your inbox. Please try again. ' +
+            error.message
+        );
+        tab('login');
+      }
+    });
+  } else {
+    setHidden('#app', true);
+    setHidden('#auth', false);
     tab('login');
-  });
-}
-
+  }
 })();
