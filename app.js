@@ -15,6 +15,11 @@
     return node;
   }
 
+  function initials(value) {
+    var name = String(value || '').trim();
+    return name ? name.charAt(0).toUpperCase() : '?';
+  }
+
   function on(selector, event, handler) {
     var node = $(selector);
     if (node) node.addEventListener(event, handler);
