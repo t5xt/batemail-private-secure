@@ -415,25 +415,6 @@ form { display: grid; gap: 12px; }
 .pane .fitem { padding: 17px 20px; }
 .pane .fitem:last-child { border-bottom: 0; }
 
-/* Footer */
-.app-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  min-height: 83px;
-  padding: 20px 28px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 13px;
-}
-.app-footer .logo { color: #c3d7f7; font-size: 20px; }
-.app-footer .ico { width: 39px; height: 21px; }
-.footer-links { display: flex; gap: 24px; }
-.footer-links a { color: var(--muted); text-decoration: none; }
-.footer-links a:hover { color: white; }
-.app-warning { padding: 0 28px 18px; }
-
 /* Responsive layouts */
 @media (min-width: 1200px) {
   #app .grid { grid-template-columns: 272px minmax(0, 1fr); }
@@ -484,9 +465,6 @@ form { display: grid; gap: 12px; }
   .row { padding: 15px 13px; }
   .read { padding: 20px 16px; }
   .read h2 { font-size: 25px; }
-  .app-footer { flex-wrap: wrap; padding: 18px 16px; }
-  .footer-links { gap: 16px; }
-  .app-warning { padding: 0 16px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
@@ -621,19 +599,6 @@ form { display: grid; gap: 12px; }
     </main>
   </div>
 
-  <footer class="app-footer">
-    <div class="logo">
-      <svg class="ico" aria-hidden="true"><use href="#bat"/></svg>
-      BateMail
-    </div>
-    <nav class="footer-links" aria-label="Footer">
-      <a href="#n-inbox">Inbox</a>
-      <a href="#n-forum">Forum</a>
-      <a href="#faq">FAQ</a>
-    </nav>
-    <span>batemail.lol</span>
-  </footer>
-  <p class="warn app-warning">Don’t share your email, password or personal info on batemail.lol.</p>
 </div>
 
 <script src="/app.js"></script>
